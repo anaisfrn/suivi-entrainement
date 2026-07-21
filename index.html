@@ -321,6 +321,19 @@
   .ex-rest svg{width:14px; height:14px; flex:none;}
   .rest-input{width:92px; height:34px; border:1px solid var(--hair); border-radius:9px; background:var(--surface-2); color:var(--ink); font-family:var(--font-mono); font-weight:700; font-size:13px; text-align:center; padding:0 8px;}
   .rest-input:focus{outline:none; border-color:var(--accent);}
+  .ec-top-right{display:flex; align-items:center; gap:8px; flex:none;}
+  .reorder{display:inline-flex; flex-direction:column; gap:3px;}
+  .reo-btn{appearance:none; cursor:pointer; width:30px; height:19px; border:1px solid var(--hair); background:var(--surface-2); color:var(--ink-2); border-radius:7px; display:grid; place-items:center; padding:0;}
+  .reo-btn svg{width:13px; height:13px;}
+  .reo-btn:hover:not(:disabled){color:var(--accent); border-color:var(--accent);}
+  .reo-btn:disabled{opacity:.3; cursor:default;}
+  .ex-note{margin-top:10px;}
+  .ex-note .nl{display:flex; align-items:center; gap:7px; font-family:var(--font-mono); font-size:11.5px; color:var(--muted); font-weight:700; letter-spacing:.02em; margin-bottom:6px;}
+  .ex-note .nl svg{width:14px; height:14px; flex:none;}
+  .note-input{width:100%; box-sizing:border-box; min-height:38px; resize:vertical; border:1px solid var(--hair); border-radius:10px; background:var(--surface-2); color:var(--ink); font-family:inherit; font-size:13px; line-height:1.45; padding:9px 11px; display:block;}
+  .note-input:focus{outline:none; border-color:var(--accent);}
+  .note-input::placeholder{color:var(--muted);}
+  table.log tr.tr-note td{border-top:none; padding-top:0; color:var(--ink-2); font-style:italic; font-size:11.5px;}
   .ec-actions{display:flex; gap:14px; margin-top:12px;}
   .link-btn{appearance:none; cursor:pointer; background:transparent; border:none; font-family:inherit; font-size:12.5px; font-weight:650; color:var(--accent); padding:2px 0;}
   .link-btn.rm{color:var(--muted);}
@@ -441,6 +454,7 @@ const frDate = iso => { if(!iso) return null; const [y,m,d]=iso.split('-'); retu
 const MON=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
 const monShort = iso => { const[y,m,d]=iso.split('-'); return `${+d} ${MON[+m-1]}`; };
 const todayISO = () => new Date().toISOString().slice(0,10);
+const esc = s => String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 function weekVolume(w){ let v=0, any=false; for(let i=0;i<3;i++){ const sw=setW(w.weights[i]), sr=setR(w.reps[i]); if(sw!=null&&sr!=null){v+=sw*sr; any=true;} } return any?v:null; }
 const epley = (w,r)=> (w&&r)? +(w*(1+r/30)).toFixed(1) : null;
@@ -486,7 +500,7 @@ function excelSessionsFor(dayId){
 function loggedSessionsFor(dayId){
   return STORE.sessions().filter(s=>s.dayId===dayId).map(s=>{
     const exMap={}; let totalVol=0;
-    (s.exercises||[]).forEach(e=>{ const sets=(e.sets||[]).map(x=>({w:x.w,r:x.r,i:(x.i!=null?x.i:null)})); if(sets.length){ const valid=sets.filter(x=>x.w!=null); const top=valid.length?Math.max(...valid.map(x=>x.w)):null; let vol=0,anyv=false; sets.forEach(x=>{if(x.w!=null&&x.r!=null){vol+=x.w*x.r;anyv=true;}}); if(anyv) totalVol+=vol; exMap[e.name]={sets, top, vol:anyv?vol:null, rest:e.rest||null}; } });
+    (s.exercises||[]).forEach(e=>{ const sets=(e.sets||[]).map(x=>({w:x.w,r:x.r,i:(x.i!=null?x.i:null)})); if(sets.length){ const valid=sets.filter(x=>x.w!=null); const top=valid.length?Math.max(...valid.map(x=>x.w)):null; let vol=0,anyv=false; sets.forEach(x=>{if(x.w!=null&&x.r!=null){vol+=x.w*x.r;anyv=true;}}); if(anyv) totalVol+=vol; exMap[e.name]={sets, top, vol:anyv?vol:null, rest:e.rest||null, note:e.note||null}; } });
     return {ts:s.startTs, dateISO:s.dateISO, source:'log', label:frDate(s.dateISO), home:false, exMap, totalVol, id:s.id};
   });
 }
@@ -658,6 +672,7 @@ function buildDetail(day){
     r.appendChild(el('td','setv muted', e.rest||'—'));
     const hasInt=e.sets.some(x=>x.i!=null); const it=el('td','setv'); it.textContent = hasInt? e.sets.map(x=>x.i!=null?fmtNum(x.i):'–').join(' · ') : '—'; r.appendChild(it);
     tb.appendChild(r);
+    if(e.note){ const nr=el('tr','tr-note'); const c=el('td'); c.colSpan=5; c.textContent='📝 '+e.note; nr.appendChild(c); tb.appendChild(nr); }
   });
   tbl.appendChild(tb); dt.appendChild(tbl); wrap.appendChild(dt);
   return wrap;
@@ -713,7 +728,7 @@ function buildChart(day,ex){
   const hit=document.createElementNS(NS,'circle'); hit.setAttribute('r','7'); hit.setAttribute('fill','none'); hit.setAttribute('stroke','var(--accent-soft)'); hit.setAttribute('stroke-width','2'); hit.style.opacity='0'; svg.appendChild(hit);
   function onMove(e){ const r=svg.getBoundingClientRect(); const mx=(e.clientX-r.left)/r.width*W; let best=series[0],bd=1e9; series.forEach(p=>{const d=Math.abs(p._x-mx); if(d<bd){bd=d;best=p;}});
     cross.setAttribute('x1',best._x); cross.setAttribute('x2',best._x); cross.style.opacity='1'; hit.setAttribute('cx',best._x); hit.setAttribute('cy',best._y); hit.style.opacity='1';
-    let wtxt,rtxt,extra=''; if(best.source==='log'){ wtxt=best.logged.sets.map(x=>fmtNum(x.w)).join(' · '); rtxt=best.logged.sets.map(x=>x.r!=null?fmtNum(x.r):'–').join(' · '); const ii=best.logged.sets.map(x=>x.i); if(ii.some(x=>x!=null)) extra+=`<br>RPE&nbsp;: <b>${ii.map(x=>x!=null?fmtNum(x):'–').join(' · ')}</b>`; if(best.logged.rest) extra+=`<br>Repos&nbsp;: <b>${best.logged.rest}</b>`; }
+    let wtxt,rtxt,extra=''; if(best.source==='log'){ wtxt=best.logged.sets.map(x=>fmtNum(x.w)).join(' · '); rtxt=best.logged.sets.map(x=>x.r!=null?fmtNum(x.r):'–').join(' · '); const ii=best.logged.sets.map(x=>x.i); if(ii.some(x=>x!=null)) extra+=`<br>RPE&nbsp;: <b>${ii.map(x=>x!=null?fmtNum(x):'–').join(' · ')}</b>`; if(best.logged.rest) extra+=`<br>Repos&nbsp;: <b>${esc(best.logged.rest)}</b>`; if(best.logged.note) extra+=`<br>📝 <b>${esc(best.logged.note)}</b>`; }
     else { wtxt=best.w.weights.filter(x=>x!=null).join(' · ')||'—'; rtxt=best.w.reps.filter(x=>x!=null).join(' · ')||'—'; }
     showTip(e, `${best.source==='log'?'◆ Séance':best.key} · ${frDate(best.dateISO)}${best.home?' · 🏠':''}`, `${fmtNum(best.v)} <span style="font-size:11px;opacity:.7;font-weight:600">${M.lab.toLowerCase()} · lb</span>`, `Poids&nbsp;: <b>${wtxt}</b><br>Reps&nbsp;: <b>${rtxt}</b>${extra}`);
   }
@@ -741,7 +756,7 @@ function startSession(dayId){
     const p=(prev&&prev.exMap[ex.name])?{sets:prev.exMap[ex.name].sets, top:prev.exMap[ex.name].top, vol:prev.exMap[ex.name].vol, dateISO:prev.dateISO, source:prev.source}:individualPrev(dayId,ex.name,startTs);
     const nSets=(p&&p.sets.length)?p.sets.length:3; const sets=[];
     for(let i=0;i<nSets;i++){ const ps=p&&p.sets[i]; sets.push({weight: ps?String(ps.w):'', reps:(ps&&ps.r!=null)?String(ps.r):'', intensity:'', done:false}); }
-    return {name:ex.name, range:ex.range, rest:latestRest(dayId,ex.name), sets, prev:p||null, best:allTimeBest(dayId,ex.name)};
+    return {name:ex.name, range:ex.range, rest:latestRest(dayId,ex.name), note:'', sets, prev:p||null, best:allTimeBest(dayId,ex.name)};
   });
   const active={id:'s'+startTs, dayId, dayName:day.name, tag:day.tag, startTs, dateISO:todayISO(), prevTotalVol:prev?prev.totalVol:null, prevDateISO:prev?prev.dateISO:null, prevSource:prev?prev.source:null, exercises};
   STORE.saveActive(active); renderTrain();
@@ -883,7 +898,13 @@ function renderStartScreenFromActive(){ clearInterval(timerInt); timerInt=null; 
 function buildExCard(active,ex,ei){
   const card=el('div','ex-card'); const top=el('div','ec-top');
   const nmw=el('div'); nmw.appendChild(el('div','ec-name',ex.name)); if(ex.range) nmw.appendChild(el('div','ec-range',ex.range)); top.appendChild(nmw);
-  const rec=el('div','ec-record'); rec.innerHTML='🏆 Record&nbsp;!'; top.appendChild(rec); card.appendChild(top);
+  const right=el('div','ec-top-right');
+  const rec=el('div','ec-record'); rec.innerHTML='🏆 Record&nbsp;!'; right.appendChild(rec);
+  const reo=el('div','reorder');
+  const up=el('button','reo-btn'); up.type='button'; up.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14l6-6 6 6"/></svg>'; up.disabled=ei===0; up.title='Monter'; up.setAttribute('aria-label','Monter l\'exercice '+ex.name); up.addEventListener('click',()=>moveExercise(active,ei,-1));
+  const down=el('button','reo-btn'); down.type='button'; down.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10l6 6 6-6"/></svg>'; down.disabled=ei===active.exercises.length-1; down.title='Descendre'; down.setAttribute('aria-label','Descendre l\'exercice '+ex.name); down.addEventListener('click',()=>moveExercise(active,ei,1));
+  reo.append(up,down); right.appendChild(reo);
+  top.appendChild(right); card.appendChild(top);
 
   const pl=el('div','prev-line'+(ex.prev?'':' none'));
   if(ex.prev){ const setsTxt=ex.prev.sets.map(s=>`${fmtNum(s.w)}${s.r!=null?'×'+fmtNum(s.r):''}`).join('  ·  '); pl.innerHTML=`<span class="pl-lab">La dernière fois&nbsp;:</span> <b>${setsTxt}</b>  <span style="color:var(--muted)">(max ${fmtNum(ex.prev.top)} lb)</span>`; }
@@ -896,6 +917,13 @@ function buildExCard(active,ex,ei){
   ri.addEventListener('input',()=>{ ex.rest=ri.value; scheduleLive(active); });
   ri.addEventListener('blur',()=>{ persist(active); });
   restRow.appendChild(ri); card.appendChild(restRow);
+
+  const noteRow=el('div','ex-note');
+  const nl=el('div','nl'); nl.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Notes / variante</span>'; noteRow.appendChild(nl);
+  const na=document.createElement('textarea'); na.className='note-input'; na.rows=1; na.value=ex.note||''; na.placeholder='ex : hip thrust à la smith machine, ceinture, ressenti…'; na.setAttribute('aria-label','notes / variante pour '+ex.name);
+  na.addEventListener('input',()=>{ ex.note=na.value; autoGrow(na); scheduleLive(active); });
+  na.addEventListener('blur',()=>{ persist(active); });
+  noteRow.appendChild(na); card.appendChild(noteRow); autoGrow(na);
 
   const setRefs=[];
   ex.sets.forEach((st,si)=>{
@@ -922,6 +950,11 @@ function buildExCard(active,ex,ei){
   TR.cards.push({ei, rec, setRefs}); return card;
 }
 function rebuildActive(active){ clearInterval(timerInt); timerInt=null; appRoot.innerHTML=''; renderActiveSession(active); }
+function moveExercise(active, ei, dir){
+  const j=ei+dir; const arr=active.exercises; if(j<0||j>=arr.length) return;
+  const t=arr[ei]; arr[ei]=arr[j]; arr[j]=t; persist(active); rebuildActive(active);
+}
+function autoGrow(t){ try{ t.style.height='auto'; t.style.height=((t.scrollHeight||38)+2)+'px'; }catch(e){} }
 
 function buildStepper(active,ex,ei,si,field,step,unit){
   const st=ex.sets[si]; const wrap=el('div','stepper');
@@ -1016,7 +1049,7 @@ function openRecap(active){
 }
 function saveActiveSession(active,vol,durMin){
   const session={ id:active.id, dayId:active.dayId, dayName:active.dayName, tag:active.tag, startTs:active.startTs, endTs:Date.now(), durationMin:durMin, dateISO:active.dateISO, totalVol:Math.round(vol),
-    exercises: active.exercises.map(ex=>({ name:ex.name, range:ex.range, rest:(ex.rest!=null&&String(ex.rest).trim()!=='')?String(ex.rest).trim():null, sets: ex.sets.filter(s=>s.done && pnum(s.weight)!=null).map(s=>{ const iv=pnum(s.intensity); return {w:pnum(s.weight), r:pnum(s.reps), i:(iv!=null)?Math.max(0,Math.min(10,iv)):null}; }) })).filter(e=>e.sets.length) };
+    exercises: active.exercises.map(ex=>({ name:ex.name, range:ex.range, rest:(ex.rest!=null&&String(ex.rest).trim()!=='')?String(ex.rest).trim():null, note:(ex.note!=null&&String(ex.note).trim()!=='')?String(ex.note).trim():null, sets: ex.sets.filter(s=>s.done && pnum(s.weight)!=null).map(s=>{ const iv=pnum(s.intensity); return {w:pnum(s.weight), r:pnum(s.reps), i:(iv!=null)?Math.max(0,Math.min(10,iv)):null}; }) })).filter(e=>e.sets.length) };
   STORE.addSession(session); STORE.clearActive(); renderTrain(); renderAnalyse();
 }
 
