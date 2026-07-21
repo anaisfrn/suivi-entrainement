@@ -182,10 +182,11 @@
   .exrow.sel{background:var(--accent-wash);}
   .exrow.sel > th .exname{color:var(--accent);}
   td.prc{font-family:var(--font-mono); font-size:12.5px; color:var(--ink-2); font-weight:700; padding:0 8px 0 6px; white-space:nowrap; text-align:right;}
-  td.prc.multi{padding:4px 8px 4px 6px;}
-  td.prc.multi .prline{font-size:11px; line-height:1.4; white-space:nowrap; text-align:right;}
-  td.prc.multi .prline b{font-weight:800; color:var(--ink);}
-  td.prc.multi .prline span{color:var(--muted); font-weight:600; margin-left:4px;}
+  td.prc.multi{cursor:pointer;}
+  td.prc.multi b{color:var(--ink); font-weight:800;}
+  td.prc .prmore{display:inline-block; font-size:9.5px; font-weight:800; color:var(--accent); background:var(--accent-wash); border-radius:5px; padding:1px 4px; margin-left:4px; vertical-align:middle;}
+  #tip .ts .tprow{display:flex; justify-content:space-between; gap:16px; padding:1px 0;}
+  #tip .ts .tprow b{color:var(--plane);}
   .chart-pr{font-size:12px; color:var(--ink-2); margin-top:4px; font-family:var(--font-mono); letter-spacing:.01em;}
   .chart-pr b{color:var(--accent); font-weight:800;}
 
@@ -683,14 +684,21 @@ function buildHeat(day){
     });
     varOrder.sort((a,b)=> a==='Standard'?-1:(b==='Standard'?1:0));
     if(varOrder.length<=1){ tr.appendChild(el('td','prc', varOrder.length?fmtNum(rg[varOrder[0]].mx):'–')); }
-    else { const pc=el('td','prc multi'); varOrder.forEach(v=>{ const ln=el('div','prline'); ln.innerHTML=`<b>${fmtNum(rg[v].mx)}</b><span>${esc(v)}</span>`; pc.appendChild(ln); }); tr.appendChild(pc); }
+    else {
+      const primary = varOrder.indexOf('Standard')>=0 ? 'Standard' : varOrder.slice().sort((a,b)=>byVar[b].length-byVar[a].length)[0];
+      const pc=el('td','prc multi'); pc.innerHTML=`<b>${fmtNum(rg[primary].mx)}</b><span class="prmore">+${varOrder.length-1}</span>`; pc.title='Records par variante — survole ou touche';
+      const list=varOrder.map(v=>({v, pr:rg[v].mx}));
+      pc.addEventListener('mouseenter',e=>showPrTip(e,ex,list)); pc.addEventListener('mousemove',moveTip); pc.addEventListener('mouseleave',hideTip);
+      pc.addEventListener('click',e=>{ e.stopPropagation(); showPrTip(e,ex,list); armTapHide(); });
+      tr.appendChild(pc);
+    }
     const sel=()=>{ exIdx=ei; variantSel=null; renderAnalyse(); };
     tr.addEventListener('click',sel); tr.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();sel();} });
     tb.appendChild(tr);
   });
   tbl.appendChild(tb); wrap.appendChild(tbl);
   const cap=el('div'); cap.style.cssText='display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:11.5px;color:var(--muted);font-family:var(--font-mono)';
-  cap.innerHTML=`<span>Charge la plus lourde (lb) · <b style="color:var(--ink-2)">×reps</b></span><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--blue);vertical-align:middle;margin-right:4px"></span>maison</span><span><span style="display:inline-block;width:7px;height:7px;background:var(--accent);transform:rotate(45deg);vertical-align:middle;margin-right:5px"></span>variante</span><span>PR = record du bloc, <b style="color:var(--ink-2)">par variante</b> · couleurs comparées au sein de chaque variante</span>`;
+  cap.innerHTML=`<span>Charge la plus lourde (lb) · <b style="color:var(--ink-2)">×reps</b></span><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--blue);vertical-align:middle;margin-right:4px"></span>maison</span><span><span style="display:inline-block;width:7px;height:7px;background:var(--accent);transform:rotate(45deg);vertical-align:middle;margin-right:5px"></span>variante</span><span>PR par variante · <b style="color:var(--ink-2)">+N</b> = autres variantes (survole / touche)</span>`;
   wrap.appendChild(cap); return wrap;
 }
 
@@ -818,6 +826,8 @@ function showTip(e,title,val,sub){ tip.innerHTML=`<div class="tt">${title}</div>
 function showCellTip(e,day,ex,w,wi){ const wtxt=w.weights.filter(x=>x!=null).join(' · ')||'—'; const rtxt=w.reps.filter(x=>x!=null).join(' · ')||'—'; const vv=resolveVariant(ex.name,w.variant); showTip(e, `${ex.name} · S${w.week}${day.weekMeta[wi].home?' 🏠':''}`, `${fmtNum(w.topWeight)} <span style="font-size:11px;opacity:.7;font-weight:600">lb · charge max ×${fmtNum(w.topReps)}</span>`, `${vv!=='Standard'?`Variante&nbsp;: <b>${esc(vv)}</b><br>`:''}Séries&nbsp;: <b>${weekNSeries(w)}</b><br>Poids&nbsp;: <b>${wtxt}</b><br>Reps&nbsp;: <b>${rtxt}</b>${w.rest?`<br>Repos&nbsp;: <b>${w.rest}</b>`:''}`); }
 function moveTip(e){ const pad=14, tw=tip.offsetWidth, th=tip.offsetHeight; let x=e.clientX+pad, y=e.clientY+pad; if(x+tw>innerWidth-8) x=e.clientX-tw-pad; if(y+th>innerHeight-8) y=e.clientY-th-pad; tip.style.left=x+'px'; tip.style.top=y+'px'; }
 function hideTip(){ tip.style.opacity='0'; tip.setAttribute('aria-hidden','true'); }
+function showPrTip(e,ex,list){ const rows=list.map(x=>`<div class="tprow"><span>${esc(x.v)}</span><b>${fmtNum(x.pr)} lb</b></div>`).join(''); showTip(e, 'RECORDS PAR VARIANTE', ex.name, rows); }
+function armTapHide(){ setTimeout(()=>document.addEventListener('click', hideTip, {once:true}), 0); }
 
 /* ================= TRAIN MODE ================= */
 const appRoot=$('#appRoot'); let TR=null; let timerInt=null;
