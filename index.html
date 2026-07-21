@@ -182,6 +182,12 @@
   .exrow.sel{background:var(--accent-wash);}
   .exrow.sel > th .exname{color:var(--accent);}
   td.prc{font-family:var(--font-mono); font-size:12.5px; color:var(--ink-2); font-weight:700; padding:0 8px 0 6px; white-space:nowrap; text-align:right;}
+  td.prc.multi{padding:4px 8px 4px 6px;}
+  td.prc.multi .prline{font-size:11px; line-height:1.4; white-space:nowrap; text-align:right;}
+  td.prc.multi .prline b{font-weight:800; color:var(--ink);}
+  td.prc.multi .prline span{color:var(--muted); font-weight:600; margin-left:4px;}
+  .chart-pr{font-size:12px; color:var(--ink-2); margin-top:4px; font-family:var(--font-mono); letter-spacing:.01em;}
+  .chart-pr b{color:var(--accent); font-weight:800;}
 
   .detail{display:grid; grid-template-columns:1.35fr 1fr; gap:0; border-top:1px solid var(--hair); background:var(--surface-2);}
   @media (max-width:760px){ .detail{grid-template-columns:1fr;} }
@@ -660,39 +666,46 @@ function buildHeat(day){
   day.exercises.forEach((ex,ei)=>{
     const tr=el('tr','exrow'+(ei===exIdx?' sel':'')); tr.tabIndex=0; tr.setAttribute('role','button'); tr.setAttribute('aria-label','Progression de '+ex.name);
     const th=el('th'); th.appendChild(el('span','exname',ex.name)); if(ex.range) th.appendChild(el('span','rng',ex.range)); tr.appendChild(th);
-    const vals=ex.weeks.map(w=>w.topWeight).filter(v=>v!=null); const mn=Math.min(...vals), mx=Math.max(...vals);
+    const byVar={}, varOrder=[];
+    ex.weeks.forEach(w=>{ if(w.topWeight!=null){ const v=resolveVariant(ex.name,w.variant); if(varOrder.indexOf(v)<0) varOrder.push(v); (byVar[v]=byVar[v]||[]).push(w.topWeight); } });
+    const rg={}; varOrder.forEach(v=>{ rg[v]={mn:Math.min(...byVar[v]), mx:Math.max(...byVar[v])}; });
     ex.weeks.forEach((w,wi)=>{
       const td=el('td','cell'+(w.topWeight==null?' empty':'')); const box=el('div','cellbox');
       if(w.topWeight!=null){
-        const t=mx>mn?(w.topWeight-mn)/(mx-mn):.5; const bg=mix(lo,hi,0.12+t*0.88);
+        const v=resolveVariant(ex.name,w.variant); const r=rg[v]; const t=r.mx>r.mn?(w.topWeight-r.mn)/(r.mx-r.mn):.5; const bg=mix(lo,hi,0.12+t*0.88);
         box.style.background=bg; box.style.color=lumOf(bg)>0.42?'#12100e':'#fff';
         box.innerHTML=`${fmtNum(w.topWeight)}${w.topReps!=null?`<span class="r">×${fmtNum(w.topReps)}</span>`:''}`;
         if(day.weekMeta[wi].home) td.appendChild(el('span','hdot'));
-        if(resolveVariant(ex.name,w.variant)!=='Standard') td.appendChild(el('span','vmark'));
+        if(v!=='Standard') td.appendChild(el('span','vmark'));
         td.addEventListener('mouseenter',e=>showCellTip(e,day,ex,w,wi)); td.addEventListener('mousemove',moveTip); td.addEventListener('mouseleave',hideTip);
       } else box.textContent='·';
       td.appendChild(box); tr.appendChild(td);
     });
-    tr.appendChild(el('td','prc', vals.length?fmtNum(mx):'–'));
+    varOrder.sort((a,b)=> a==='Standard'?-1:(b==='Standard'?1:0));
+    if(varOrder.length<=1){ tr.appendChild(el('td','prc', varOrder.length?fmtNum(rg[varOrder[0]].mx):'–')); }
+    else { const pc=el('td','prc multi'); varOrder.forEach(v=>{ const ln=el('div','prline'); ln.innerHTML=`<b>${fmtNum(rg[v].mx)}</b><span>${esc(v)}</span>`; pc.appendChild(ln); }); tr.appendChild(pc); }
     const sel=()=>{ exIdx=ei; variantSel=null; renderAnalyse(); };
     tr.addEventListener('click',sel); tr.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();sel();} });
     tb.appendChild(tr);
   });
   tbl.appendChild(tb); wrap.appendChild(tbl);
   const cap=el('div'); cap.style.cssText='display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:11.5px;color:var(--muted);font-family:var(--font-mono)';
-  cap.innerHTML=`<span>Charge la plus lourde (lb) · <b style="color:var(--ink-2)">×reps</b></span><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--blue);vertical-align:middle;margin-right:4px"></span>maison</span><span><span style="display:inline-block;width:7px;height:7px;background:var(--accent);transform:rotate(45deg);vertical-align:middle;margin-right:5px"></span>variante (voir détail)</span><span>PR = record</span>`;
+  cap.innerHTML=`<span>Charge la plus lourde (lb) · <b style="color:var(--ink-2)">×reps</b></span><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--blue);vertical-align:middle;margin-right:4px"></span>maison</span><span><span style="display:inline-block;width:7px;height:7px;background:var(--accent);transform:rotate(45deg);vertical-align:middle;margin-right:5px"></span>variante</span><span>PR = record du bloc, <b style="color:var(--ink-2)">par variante</b> · couleurs comparées au sein de chaque variante</span>`;
   wrap.appendChild(cap); return wrap;
 }
 
 function buildDetail(day){
   const ex=day.exercises[exIdx]; const wrap=el('div','detail');
+  const vdata=dataVariantsFor(day, ex);
+  if(!variantSel || vdata.indexOf(variantSel)<0) variantSel=defaultVariant(day, ex);
   const cc=el('div','chart-col'); const ch=el('div','chart-head');
-  const ctw=el('div'); ctw.appendChild(el('div','ct',ex.name)); ch.appendChild(ctw);
+  const ctw=el('div'); ctw.appendChild(el('div','ct',ex.name));
+  const rec=allTimeBestVariant(day.id, ex.name, variantSel);
+  if(rec!=null){ const rp=el('div','chart-pr'); rp.innerHTML=`Record${variantSel!=='Standard'?' · '+esc(variantSel):''}&nbsp;: <b>${fmtNum(rec)} lb</b>`; ctw.appendChild(rp); }
+  ch.appendChild(ctw);
   const mt=el('div','metric-toggle');
   Object.entries(METRICS).forEach(([k,m])=>{ const b=el('button',null,m.short); b.type='button'; b.setAttribute('aria-pressed',k===metric?'true':'false'); b.addEventListener('click',()=>{metric=k; renderAnalyse();}); mt.appendChild(b); });
   ch.appendChild(mt); cc.appendChild(ch);
-  const vdata=dataVariantsFor(day, ex);
-  if(!variantSel || vdata.indexOf(variantSel)<0) variantSel=defaultVariant(day, ex);
   if(vdata.length>1){
     const vf=el('div','var-filter'); vf.appendChild(el('span','var-lab','Variante'));
     vdata.forEach(v=>{ const b=el('button','vchip'+(v===variantSel?' on':'')); b.type='button'; b.textContent=v; b.addEventListener('click',()=>{ variantSel=v; renderAnalyse(); }); vf.appendChild(b); });
