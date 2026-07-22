@@ -173,7 +173,8 @@
   .exrow > th .rng{display:block; font-size:11px; color:var(--muted); font-weight:500; font-family:var(--font-mono); margin-top:1px;}
   .exrow{cursor:pointer;}
   .exrow:hover th .exname{color:var(--accent);}
-  .cell{width:13%; height:44px; position:relative; cursor:pointer; border-radius:8px; font-variant-numeric:tabular-nums;}
+  .cell{width:13%; min-width:44px; height:44px; position:relative; cursor:pointer; border-radius:8px; font-variant-numeric:tabular-nums;}
+  table.heat thead th.logh{color:var(--accent); font-weight:700;}
   .cellbox{position:absolute; inset:2px; border-radius:8px; display:grid; place-items:center; font-size:14px; font-weight:700; line-height:1; transition:transform .12s;}
   .cellbox .r{display:block; font-size:9.5px; font-weight:600; opacity:.72; margin-top:2px; font-family:var(--font-mono);}
   .cell:hover .cellbox{transform:scale(1.06); box-shadow:0 0 0 2px var(--surface), 0 0 0 3.5px var(--accent);}
@@ -595,13 +596,20 @@ $('#hdrDates').textContent = `${frDate(S.first)}–${frDate(S.last)}`;
 $('#eyebrow').textContent = `BLOC 4 · ${monShort(S.first).toUpperCase()} → ${monShort(S.last).toUpperCase()} 2026`;
 
 function kpi(lab,val,sub,lead){ const c=el('div','kpi'+(lead?' lead':'')); c.appendChild(el('div','lab',lab)); const v=el('div','val'); v.innerHTML=val; c.appendChild(v); if(sub) c.appendChild(el('div','sub',sub)); return c; }
-$('#kpis').append(
-  kpi('Séances réalisées', `${S.n}`, 'sur 6 semaines de bloc', true),
-  kpi('Temps en séance', `${hoursLabel(S.mins)}`, `≈ ${Math.round(S.mins/S.n)} min / séance`),
-  kpi('Volume total', `${fmtK(S.tonnage)}<small> lb</small>`, 'charge × reps cumulés'),
-  kpi('Salle / Maison', `${S.gym}<small> / </small>${S.home}`, `${Math.round(S.home/S.n*100)} % à la maison`),
-  kpi('Régularité', `${(S.n/9).toFixed(1).replace('.',',')}<small> /sem</small>`, 'moyenne sur le bloc'),
-);
+function loggedStatsAll(){ let n=0,mins=0,home=0,vol=0; STORE.sessions().forEach(s=>{ n++; mins+=(s.durationMin||0); if(s.home)home++; vol+=(s.totalVol||0); }); return {n,mins,home,vol}; }
+function renderKpis(){
+  const L=loggedStatsAll();
+  const n=S.n+L.n, mins=S.mins+L.mins, ton=S.tonnage+L.vol, home=S.home+L.home, gym=n-home;
+  const wrap=$('#kpis'); wrap.innerHTML='';
+  wrap.append(
+    kpi('Séances réalisées', `${n}`, L.n? `${S.n} du bloc + ${L.n} enregistrée${L.n>1?'s':''}` : 'sur 6 semaines de bloc', true),
+    kpi('Temps en séance', `${hoursLabel(mins)}`, n? `≈ ${Math.round(mins/n)} min / séance` : ''),
+    kpi('Volume total', `${fmtK(ton)}<small> lb</small>`, 'charge × reps cumulés'),
+    kpi('Salle / Maison', `${gym}<small> / </small>${home}`, n? `${Math.round(home/n*100)} % à la maison` : ''),
+    kpi('Régularité', `${(n/9).toFixed(1).replace('.',',')}<small> /sem</small>`, 'moyenne'),
+  );
+}
+renderKpis();
 
 /* ---------- analyse state ---------- */
 let dayIdx = Math.max(0, DATA.days.findIndex(d=>d.exercises.some(e=>e.weeks.some(w=>w.done))));
@@ -628,6 +636,7 @@ function lumOf(rgb){const m=rgb.match(/\d+/g).map(Number);const f=c=>{c/=255;ret
 /* ---------- analyse render ---------- */
 const panel=$('#panel');
 function renderAnalyse(){
+  renderKpis();
   [...tabsEl.children].forEach((t,i)=>t.setAttribute('aria-selected', i===dayIdx?'true':'false'));
   const day=DATA.days[dayIdx]; panel.innerHTML='';
   const head=el('div','panel-head'); head.appendChild(el('div','ptitle',day.name));
@@ -660,25 +669,34 @@ function buildWeeks(day){
 
 function buildHeat(day){
   const wrap=el('div','heat-wrap'); const tbl=el('table','heat');
+  const cols=[];
+  for(let wi=0;wi<6;wi++) cols.push({kind:'excel', wi, label:'S'+(wi+1), home:day.weekMeta[wi].home});
+  loggedSessionsFor(day.id).slice().sort((a,b)=>a.ts-b.ts).forEach(s=>cols.push({kind:'log', s, label:frDate(s.dateISO), home:s.home}));
   const thead=el('thead'); const htr=el('tr'); htr.appendChild(el('th','exh','Exercice'));
-  for(let w=1;w<=6;w++) htr.appendChild(el('th',null,'S'+w));
+  cols.forEach(c=>htr.appendChild(el('th', c.kind==='log'?'logh':null, c.kind==='log'?('◆'+c.label):c.label)));
   htr.appendChild(el('th',null,'PR')); thead.appendChild(htr); tbl.appendChild(thead);
   const tb=el('tbody'); const lo=readVar('--heat-lo'), hi=readVar('--heat-hi');
+  const cellOf=(ex,c)=>{
+    if(c.kind==='excel'){ const w=ex.weeks[c.wi]; return w.topWeight!=null? {top:w.topWeight, reps:w.topReps, variant:resolveVariant(ex.name,w.variant), home:c.home, kind:'excel', w, wi:c.wi} : null; }
+    const e=c.s.exMap[ex.name]; if(!e||e.top==null) return null; const tset=e.sets.find(x=>x.w===e.top)||{}; return {top:e.top, reps:(tset.r==null?null:tset.r), variant:resolveVariant(ex.name,e.variant), home:c.home, kind:'log', e, s:c.s};
+  };
   day.exercises.forEach((ex,ei)=>{
     const tr=el('tr','exrow'+(ei===exIdx?' sel':'')); tr.tabIndex=0; tr.setAttribute('role','button'); tr.setAttribute('aria-label','Progression de '+ex.name);
     const th=el('th'); th.appendChild(el('span','exname',ex.name)); if(ex.range) th.appendChild(el('span','rng',ex.range)); tr.appendChild(th);
+    const cells=cols.map(c=>cellOf(ex,c));
     const byVar={}, varOrder=[];
-    ex.weeks.forEach(w=>{ if(w.topWeight!=null){ const v=resolveVariant(ex.name,w.variant); if(varOrder.indexOf(v)<0) varOrder.push(v); (byVar[v]=byVar[v]||[]).push(w.topWeight); } });
+    cells.forEach(cd=>{ if(cd){ const v=cd.variant; if(varOrder.indexOf(v)<0) varOrder.push(v); (byVar[v]=byVar[v]||[]).push(cd.top); } });
     const rg={}; varOrder.forEach(v=>{ rg[v]={mn:Math.min(...byVar[v]), mx:Math.max(...byVar[v])}; });
-    ex.weeks.forEach((w,wi)=>{
-      const td=el('td','cell'+(w.topWeight==null?' empty':'')); const box=el('div','cellbox');
-      if(w.topWeight!=null){
-        const v=resolveVariant(ex.name,w.variant); const r=rg[v]; const t=r.mx>r.mn?(w.topWeight-r.mn)/(r.mx-r.mn):.5; const bg=mix(lo,hi,0.12+t*0.88);
+    cells.forEach(cd=>{
+      const td=el('td','cell'+(cd?'':' empty')); const box=el('div','cellbox');
+      if(cd){
+        const r=rg[cd.variant]; const t=r.mx>r.mn?(cd.top-r.mn)/(r.mx-r.mn):.5; const bg=mix(lo,hi,0.12+t*0.88);
         box.style.background=bg; box.style.color=lumOf(bg)>0.42?'#12100e':'#fff';
-        box.innerHTML=`${fmtNum(w.topWeight)}${w.topReps!=null?`<span class="r">×${fmtNum(w.topReps)}</span>`:''}`;
-        if(day.weekMeta[wi].home) td.appendChild(el('span','hdot'));
-        if(v!=='Standard') td.appendChild(el('span','vmark'));
-        td.addEventListener('mouseenter',e=>showCellTip(e,day,ex,w,wi)); td.addEventListener('mousemove',moveTip); td.addEventListener('mouseleave',hideTip);
+        box.innerHTML=`${fmtNum(cd.top)}${cd.reps!=null?`<span class="r">×${fmtNum(cd.reps)}</span>`:''}`;
+        if(cd.home) td.appendChild(el('span','hdot'));
+        if(cd.variant!=='Standard') td.appendChild(el('span','vmark'));
+        if(cd.kind==='log'){ td.addEventListener('mouseenter',e=>showLogTip(e,ex,cd)); } else { td.addEventListener('mouseenter',e=>showCellTip(e,day,ex,cd.w,cd.wi)); }
+        td.addEventListener('mousemove',moveTip); td.addEventListener('mouseleave',hideTip);
       } else box.textContent='·';
       td.appendChild(box); tr.appendChild(td);
     });
@@ -698,7 +716,7 @@ function buildHeat(day){
   });
   tbl.appendChild(tb); wrap.appendChild(tbl);
   const cap=el('div'); cap.style.cssText='display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:11.5px;color:var(--muted);font-family:var(--font-mono)';
-  cap.innerHTML=`<span>Charge la plus lourde (lb) · <b style="color:var(--ink-2)">×reps</b></span><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--blue);vertical-align:middle;margin-right:4px"></span>maison</span><span><span style="display:inline-block;width:7px;height:7px;background:var(--accent);transform:rotate(45deg);vertical-align:middle;margin-right:5px"></span>variante</span><span>PR par variante · <b style="color:var(--ink-2)">+N</b> = autres variantes (survole / touche)</span>`;
+  cap.innerHTML=`<span>Charge la plus lourde (lb) · <b style="color:var(--ink-2)">×reps</b></span><span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--blue);vertical-align:middle;margin-right:4px"></span>maison</span><span><span style="display:inline-block;width:7px;height:7px;background:var(--accent);transform:rotate(45deg);vertical-align:middle;margin-right:5px"></span>variante</span><span><b style="color:var(--accent)">◆</b> = séance enregistrée ici</span><span>PR par variante · <b style="color:var(--ink-2)">+N</b> = autres variantes (survole / touche)</span>`;
   wrap.appendChild(cap); return wrap;
 }
 
@@ -824,6 +842,10 @@ function buildChart(day,ex){
 const tip=$('#tip');
 function showTip(e,title,val,sub){ tip.innerHTML=`<div class="tt">${title}</div><div class="tv">${val}</div><div class="ts">${sub}</div>`; tip.style.opacity='1'; tip.setAttribute('aria-hidden','false'); moveTip(e); }
 function showCellTip(e,day,ex,w,wi){ const wtxt=w.weights.filter(x=>x!=null).join(' · ')||'—'; const rtxt=w.reps.filter(x=>x!=null).join(' · ')||'—'; const vv=resolveVariant(ex.name,w.variant); showTip(e, `${ex.name} · S${w.week}${day.weekMeta[wi].home?' 🏠':''}`, `${fmtNum(w.topWeight)} <span style="font-size:11px;opacity:.7;font-weight:600">lb · charge max ×${fmtNum(w.topReps)}</span>`, `${vv!=='Standard'?`Variante&nbsp;: <b>${esc(vv)}</b><br>`:''}Séries&nbsp;: <b>${weekNSeries(w)}</b><br>Poids&nbsp;: <b>${wtxt}</b><br>Reps&nbsp;: <b>${rtxt}</b>${w.rest?`<br>Repos&nbsp;: <b>${w.rest}</b>`:''}`); }
+function showLogTip(e,ex,c){
+  const wtxt=c.e.sets.map(x=>fmtNum(x.w)).join(' · ')||'—'; const rtxt=c.e.sets.map(x=>x.r!=null?fmtNum(x.r):'–').join(' · ')||'—';
+  showTip(e, `${ex.name} · ${frDate(c.s.dateISO)}${c.home?' 🏠':''} · ◆ loggé`, `${fmtNum(c.top)} <span style="font-size:11px;opacity:.7;font-weight:600">lb · charge max${c.reps!=null?' ×'+fmtNum(c.reps):''}</span>`, `${c.variant!=='Standard'?`Variante&nbsp;: <b>${esc(c.variant)}</b><br>`:''}Séries&nbsp;: <b>${c.e.sets.length}</b><br>Poids&nbsp;: <b>${wtxt}</b><br>Reps&nbsp;: <b>${rtxt}</b>${c.e.rest?`<br>Repos&nbsp;: <b>${esc(c.e.rest)}</b>`:''}${c.e.note?`<br>📝 <b>${esc(c.e.note)}</b>`:''}`);
+}
 function moveTip(e){ const pad=14, tw=tip.offsetWidth, th=tip.offsetHeight; let x=e.clientX+pad, y=e.clientY+pad; if(x+tw>innerWidth-8) x=e.clientX-tw-pad; if(y+th>innerHeight-8) y=e.clientY-th-pad; tip.style.left=x+'px'; tip.style.top=y+'px'; }
 function hideTip(){ tip.style.opacity='0'; tip.setAttribute('aria-hidden','true'); }
 function showPrTip(e,ex,list){ const rows=list.map(x=>`<div class="tprow"><span>${esc(x.v)}</span><b>${fmtNum(x.pr)} lb</b></div>`).join(''); showTip(e, 'RECORDS PAR VARIANTE', ex.name, rows); }
