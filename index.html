@@ -357,6 +357,35 @@
   .link-btn{appearance:none; cursor:pointer; background:transparent; border:none; font-family:inherit; font-size:12.5px; font-weight:650; color:var(--accent); padding:2px 0;}
   .link-btn.rm{color:var(--muted);}
   .link-btn:hover{text-decoration:underline;}
+  .prev-line .pl-i{color:var(--muted); font-weight:600;}
+  .set-badge.ref{color:var(--muted); font-weight:600;}
+
+  /* supersets */
+  .ss-badge{display:inline-block; font-family:var(--font-mono); font-size:11px; font-weight:800; color:var(--on-accent); background:var(--accent); border-radius:6px; padding:2px 6px; margin-right:7px; vertical-align:2px; letter-spacing:.02em;}
+  .ex-card.ss-in{border-left:3px solid var(--accent);}
+  .ss-join{display:flex; justify-content:center; align-items:center; gap:8px; margin-top:8px; min-height:22px;}
+  .ss-join + .ex-card{margin-top:8px;}
+  .ss-join .link-btn{font-size:11.5px; color:var(--muted); font-family:var(--font-mono);}
+  .ss-join.on .link-btn{color:var(--accent);}
+  .ss-join.on::before, .ss-join.on::after{content:""; flex:1; max-width:60px; border-top:1.5px dashed color-mix(in srgb,var(--accent) 55%,var(--hair));}
+
+  /* history detail */
+  .hist-item .hi-main{cursor:pointer;}
+  .hist-item:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--hair));}
+  .hist-item .hi-chev{color:var(--muted); flex:none; display:grid; place-items:center;}
+  .sd-ex{border:1px solid var(--hair); border-radius:13px; padding:12px 13px; margin-top:12px; background:var(--surface);}
+  .sd-ex.ss-in{border-left:3px solid var(--accent);}
+  .sd-ex + .ss-join, .ss-join + .sd-ex{margin-top:6px;}
+  .sd-name{font-weight:750; font-size:14.5px; letter-spacing:-.01em;}
+  .sd-meta{font-family:var(--font-mono); font-size:11.5px; color:var(--muted); margin-top:3px; line-height:1.5;}
+  .sd-meta b{color:var(--ink-2); font-weight:700;}
+  .sd-note{font-size:12.5px; color:var(--ink-2); background:var(--surface-2); border-radius:8px; padding:7px 9px; margin-top:8px; white-space:pre-wrap;}
+  .sd-sets{width:100%; border-collapse:collapse; margin-top:8px; font-family:var(--font-mono); font-size:13px;}
+  .sd-sets td{padding:5px 4px; border-top:1px solid var(--hair);}
+  .sd-sets td.n{color:var(--muted); font-weight:700; width:28px;}
+  .sd-sets td.w{font-weight:800; color:var(--ink);}
+  .sd-sets td.i{text-align:right; color:var(--ink-2); font-weight:600;}
+  .sd-sets td.i b{color:var(--ink);}
 
   .motiv{position:fixed; left:0; right:0; bottom:0; z-index:35; background:color-mix(in srgb,var(--surface) 96%,transparent); backdrop-filter:blur(10px); border-top:1px solid var(--hair); box-shadow:0 -8px 24px -16px rgba(0,0,0,.4);}
   .motiv-in{max-width:600px; margin:0 auto; padding:11px 16px 14px;}
@@ -500,6 +529,8 @@ const STORE={
   saveActive(s){ mem.active=s; lsSet(K_ACT, JSON.stringify(s)); },
   clearActive(){ mem.active=null; lsDel(K_ACT); },
 };
+/* nettoyage : une séance enregistrée sans aucun exercice (lancée par erreur) n'a pas lieu d'être */
+(function(){ const a=STORE.sessions(); const kept=a.filter(s=>(s.exercises||[]).length); if(kept.length!==a.length) STORE.saveSessions(kept); })();
 
 /* ---------- history model (excel weeks + logged) ---------- */
 function excelSessionsFor(dayId){
@@ -576,6 +607,42 @@ function exVariantPrev(dayId, exName, variant, beforeTs){
 function allTimeBestVariant(dayId, exName, variant){
   let best=null; allSessionsFor(dayId).forEach(s=>{ const e=s.exMap[exName]; if(e && resolveVariant(exName,e.variant)===variant && e.top!=null && (best==null||e.top>best)) best=e.top; }); return best;
 }
+
+/* ---------- supersets ----------
+   Un superset = suite d'exercices consécutifs portant le même id `superset`.
+   Les étiquettes (A1, A2, B1…) sont calculées à l'affichage, le nom n'est jamais modifié. */
+function ssNewId(){ return 'g'+Date.now().toString(36)+Math.random().toString(36).slice(2,5); }
+function ssLabels(exs){
+  const lab=exs.map(()=>null); let letter=0, i=0;
+  while(i<exs.length){
+    let j=i; const g=exs[i].superset;
+    if(g){ while(j+1<exs.length && exs[j+1].superset===g) j++; }
+    if(j>i){ const L=String.fromCharCode(65+letter++); for(let k=i;k<=j;k++) lab[k]=L+(k-i+1); }
+    i=j+1;
+  }
+  return lab;
+}
+function ssClean(exs){ const lab=ssLabels(exs); exs.forEach((e,k)=>{ if(!lab[k]) delete e.superset; }); }
+function ssMerge(exs, i){
+  const a=exs[i], b=exs[i+1]; if(!a||!b) return;
+  const g=a.superset||b.superset||ssNewId(); const old=b.superset; let k=i+1;
+  do { exs[k].superset=g; k++; } while(old && k<exs.length && exs[k].superset===old);
+  a.superset=g; ssClean(exs);
+}
+function ssSplit(exs, i){
+  const g=exs[i]&&exs[i].superset; if(!g) return; const ng=ssNewId();
+  for(let k=i+1;k<exs.length && exs[k].superset===g;k++) exs[k].superset=ng;
+  ssClean(exs);
+}
+function ssLinked(exs, i){ return !!(exs[i].superset && exs[i+1] && exs[i+1].superset===exs[i].superset); }
+function buildSsJoin(exs, i, onChange){
+  const linked=ssLinked(exs, i); const j=el('div','ss-join'+(linked?' on':''));
+  const b=el('button','link-btn', linked? '✂ Défusionner' : '⛓ Fusionner en superset'); b.type='button';
+  b.setAttribute('aria-label', (linked?'Défusionner ':'Fusionner en superset ')+exs[i].name+' et '+exs[i+1].name);
+  b.addEventListener('click',()=>{ if(linked) ssSplit(exs,i); else ssMerge(exs,i); onChange(); });
+  j.appendChild(b); return j;
+}
+function ssBadgeHtml(lab){ return lab? `<span class="ss-badge">${lab}</span>` : ''; }
 
 /* ---------- global stats (analyse) ---------- */
 function computeStats(){
@@ -866,6 +933,9 @@ function startSession(dayId){
     for(let i=0;i<nSets;i++){ const ps=p&&p.sets[i]; sets.push({weight: ps?String(ps.w):'', reps:(ps&&ps.r!=null)?String(ps.r):'', intensity:'', done:false}); }
     return {name:ex.name, range:ex.range, rest:latestRest(dayId,ex.name), note:'', variant:'Standard', _touched:false, sets, prev:p||null, best:allTimeBestVariant(dayId,ex.name,'Standard')};
   });
+  /* reprend les supersets de la dernière séance enregistrée de ce type */
+  const lastLog=STORE.sessions().filter(s=>s.dayId===dayId).sort((a,b)=>b.startTs-a.startTs)[0];
+  if(lastLog){ const gm={}; (lastLog.exercises||[]).forEach(e=>{ if(e.superset) gm[e.name]=e.superset; }); exercises.forEach(e=>{ if(gm[e.name]) e.superset=gm[e.name]; }); ssClean(exercises); }
   const active={id:'s'+startTs, dayId, dayName:day.name, tag:day.tag, startTs, dateISO:todayISO(), home:false, prevTotalVol:prev?prev.totalVol:null, prevDateISO:prev?prev.dateISO:null, prevSource:prev?prev.source:null, exercises};
   STORE.saveActive(active); renderTrain();
 }
@@ -907,8 +977,12 @@ function renderStartScreen(){
     const it=el('div','hist-item'); const dur=s.durationMin!=null?`${s.durationMin} min`:'—'; const nsets=(s.exercises||[]).reduce((a,e)=>a+(e.sets||[]).length,0);
     const main=el('div','hi-main'); main.innerHTML=`<div class="hi-t">${s.dayName}${s.home?' <span style="font-size:12px">🏠</span>':''}</div><div class="hi-s">${monShort(s.dateISO)} · ${s.home?'maison · ':''}${dur} · ${nsets} séries</div>`;
     const vol=el('div','hi-vol'); vol.innerHTML=`${fmtK(s.totalVol||0)}<small>lb volume</small>`;
-    const del=el('button','icon-btn'); del.innerHTML=svgTrash; del.title='Supprimer'; del.setAttribute('aria-label','Supprimer la séance'); del.addEventListener('click',()=>{ if(confirm('Supprimer cette séance enregistrée ?')){ STORE.deleteSession(s.id); renderTrain(); } });
-    it.append(main,vol,del); appRoot.appendChild(it);
+    const del=el('button','icon-btn'); del.innerHTML=svgTrash; del.title='Supprimer'; del.setAttribute('aria-label','Supprimer la séance'); del.addEventListener('click',e=>{ e.stopPropagation(); if(confirm('Supprimer cette séance enregistrée ?')){ STORE.deleteSession(s.id); renderTrain(); } });
+    const chev=el('span','hi-chev'); chev.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+    main.setAttribute('role','button'); main.tabIndex=0; main.setAttribute('aria-label','Voir le détail de la séance '+s.dayName+' du '+monShort(s.dateISO));
+    main.addEventListener('click',()=>openSessionDetail(s.id)); main.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); openSessionDetail(s.id); } });
+    vol.style.cursor='pointer'; vol.addEventListener('click',()=>openSessionDetail(s.id));
+    it.append(main,vol,chev,del); appRoot.appendChild(it);
   });
 
   appRoot.appendChild(el('div','sub-h','Sauvegarde & transfert'));
@@ -919,6 +993,48 @@ function renderStartScreen(){
   const exb=el('button','chip-btn'); exb.innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg> Exporter'; exb.addEventListener('click',exportData);
   const imb=el('button','chip-btn'); imb.innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M4 21h16"/></svg> Importer'; imb.addEventListener('click',openImportModal);
   row.append(exb,imb); tf.appendChild(row); appRoot.appendChild(tf);
+}
+
+/* ---------- history detail ---------- */
+function openSessionDetail(id){
+  const body=el('div'); let sheet=null;
+  const fill=()=>{
+    const s=STORE.sessions().find(x=>x.id===id); if(!s){ if(sheet) sheet.close(); return; }
+    const exs=s.exercises||[]; const nsets=exs.reduce((a,e)=>a+(e.sets||[]).length,0);
+    const d=new Date(s.dateISO+'T12:00:00'); const dateTxt=d.toLocaleDateString('fr-FR',{weekday:'long', day:'numeric', month:'long', year:'numeric'});
+    const t0=s.startTs? new Date(s.startTs).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : null;
+    body.innerHTML=`<div class="m-sub" style="text-transform:none">${esc(dateTxt)}${t0?' · '+t0:''} · ${s.home?'🏠 Maison':'🏋️ Salle'}</div>
+      <div class="recap-grid">
+        <div class="rc"><div class="l">Durée</div><div class="v">${s.durationMin!=null?fmtNum(s.durationMin):'—'}<small> min</small></div></div>
+        <div class="rc"><div class="l">Volume</div><div class="v">${fmtK(s.totalVol||0)}<small> lb</small></div></div>
+        <div class="rc"><div class="l">Exercices</div><div class="v">${exs.length}</div></div>
+        <div class="rc"><div class="l">Séries</div><div class="v">${nsets}</div></div>
+      </div>`;
+    if(!exs.length){ const p=el('div','sd-note','Aucun exercice enregistré dans cette séance.'); p.style.marginTop='14px'; body.appendChild(p); return; }
+    const lab=ssLabels(exs);
+    exs.forEach((e,k)=>{
+      if(k>0) body.appendChild(buildSsJoin(exs, k-1, ()=>{ const all=STORE.sessions(); const t=all.find(x=>x.id===id); if(t){ t.exercises=exs; exs.forEach(x=>{ if(!x.superset) x.superset=null; }); STORE.saveSessions(all); } fill(); }));
+      const box=el('div','sd-ex'+(lab[k]?' ss-in':''));
+      const nm=el('div','sd-name'); nm.innerHTML=ssBadgeHtml(lab[k])+esc(e.name); box.appendChild(nm);
+      const v=resolveVariant(e.name, e.variant); const meta=[];
+      if(v!=='Standard') meta.push(`Variante <b>${esc(v)}</b>`);
+      if(e.range) meta.push(esc(e.range));
+      if(e.rest) meta.push(`Repos <b>${esc(e.rest)}</b>`);
+      if(meta.length){ const m=el('div','sd-meta'); m.innerHTML=meta.join(' · '); box.appendChild(m); }
+      const tb=document.createElement('table'); tb.className='sd-sets'; let vol=0;
+      (e.sets||[]).forEach((st,si)=>{ if(st.w!=null&&st.r!=null) vol+=st.w*st.r; const tr=document.createElement('tr');
+        tr.innerHTML=`<td class="n">S${si+1}</td><td class="w">${fmtNum(st.w)} lb × ${st.r!=null?fmtNum(st.r):'–'}</td><td class="i">${st.i!=null?`RPE <b>${fmtNum(st.i)}</b>`:'<span style="color:var(--muted)">RPE –</span>'}</td>`; tb.appendChild(tr); });
+      box.appendChild(tb);
+      if(vol){ const m=el('div','sd-meta'); m.innerHTML=`Volume <b>${fmtNum(vol)} lb</b>`; box.appendChild(m); }
+      if(e.note){ box.appendChild(el('div','sd-note',e.note)); }
+      body.appendChild(box);
+    });
+  };
+  const s0=STORE.sessions().find(x=>x.id===id); if(!s0) return;
+  fill();
+  const close=el('button','chip-btn ghost','Fermer');
+  sheet=openSheet(`<h3>${esc(s0.dayName)}${s0.tag?` <span class="pill" style="vertical-align:4px">${esc(s0.tag)}</span>`:''}</h3>`, body, [close]);
+  close.addEventListener('click',()=>sheet.close());
 }
 
 /* ---------- data export / import (cross-device transfer) ---------- */
@@ -964,7 +1080,7 @@ function mergeImport(text){
   let obj; try{ obj=JSON.parse(text); }catch(e){ return {ok:false, msg:'Format illisible (JSON invalide)'}; }
   const arr=Array.isArray(obj)?obj:(obj&&obj.sessions); if(!Array.isArray(arr)) return {ok:false, msg:'Aucune séance trouvée dans ce fichier'};
   const existing=STORE.sessions(); const seen={}; existing.forEach(s=>seen[s.id]=1); const merged=existing.slice(); let added=0;
-  arr.forEach(s=>{ if(!s||!s.dayId||!Array.isArray(s.exercises)) return; if(!s.id) s.id='imp'+(s.startTs||Date.now())+Math.random().toString(36).slice(2,6); if(!seen[s.id]){ seen[s.id]=1; merged.push(s); added++; } });
+  arr.forEach(s=>{ if(!s||!s.dayId||!Array.isArray(s.exercises)||!s.exercises.length) return; if(!s.id) s.id='imp'+(s.startTs||Date.now())+Math.random().toString(36).slice(2,6); if(!seen[s.id]){ seen[s.id]=1; merged.push(s); added++; } });
   STORE.saveSessions(merged);
   return {ok:true, msg: added? `${added} séance${added>1?'s':''} importée${added>1?'s':''} ✓` : 'Aucune nouvelle séance (déjà à jour)'};
 }
@@ -993,7 +1109,11 @@ function renderActiveSession(active){
   appRoot.appendChild(loc);
 
   TR={cards:[], bottom:null};
-  active.exercises.forEach((ex,ei)=> appRoot.appendChild(buildExCard(active,ex,ei)));
+  const ssLab=ssLabels(active.exercises);
+  active.exercises.forEach((ex,ei)=>{
+    if(ei>0) appRoot.appendChild(buildSsJoin(active.exercises, ei-1, ()=>{ persist(active); rebuildActive(active); }));
+    appRoot.appendChild(buildExCard(active,ex,ei,ssLab[ei]));
+  });
 
   /* bottom motivation */
   const mv=el('div','motiv'); const mi=el('div','motiv-in');
@@ -1007,9 +1127,10 @@ function renderActiveSession(active){
 }
 function renderStartScreenFromActive(){ clearInterval(timerInt); timerInt=null; appRoot.innerHTML=''; renderStartScreen(); }
 
-function buildExCard(active,ex,ei){
-  const card=el('div','ex-card'); const top=el('div','ec-top');
-  const nmw=el('div'); nmw.appendChild(el('div','ec-name',ex.name)); if(ex.range) nmw.appendChild(el('div','ec-range',ex.range)); top.appendChild(nmw);
+function fmtPrevSet(s){ return `${fmtNum(s.w)}${s.r!=null?'×'+fmtNum(s.r):''}${s.i!=null?` <span class="pl-i">RPE&nbsp;${fmtNum(s.i)}</span>`:''}`; }
+function buildExCard(active,ex,ei,ssLab){
+  const card=el('div','ex-card'+(ssLab?' ss-in':'')); const top=el('div','ec-top');
+  const nmw=el('div'); const nmEl=el('div','ec-name'); nmEl.innerHTML=ssBadgeHtml(ssLab)+esc(ex.name); nmw.appendChild(nmEl); if(ex.range) nmw.appendChild(el('div','ec-range',ex.range)); top.appendChild(nmw);
   const right=el('div','ec-top-right');
   const rec=el('div','ec-record'); rec.innerHTML='🏆 Record&nbsp;!'; right.appendChild(rec);
   const reo=el('div','reorder');
@@ -1021,7 +1142,7 @@ function buildExCard(active,ex,ei){
   card.appendChild(buildVariantChips(active, ex, ei));
 
   const pl=el('div','prev-line'+(ex.prev?'':' none'));
-  if(ex.prev){ const setsTxt=ex.prev.sets.map(s=>`${fmtNum(s.w)}${s.r!=null?'×'+fmtNum(s.r):''}`).join('  ·  '); pl.innerHTML=`<span class="pl-lab">La dernière fois${ex.variant!=='Standard'?' ('+esc(ex.variant)+')':''}&nbsp;:</span> <b>${setsTxt}</b>  <span style="color:var(--muted)">(max ${fmtNum(ex.prev.top)} lb)</span>`; }
+  if(ex.prev){ const setsTxt=ex.prev.sets.map(fmtPrevSet).join('  ·  '); pl.innerHTML=`<span class="pl-lab">La dernière fois${ex.variant!=='Standard'?' ('+esc(ex.variant)+')':''}&nbsp;:</span> <b>${setsTxt}</b>  <span style="color:var(--muted)">(max ${fmtNum(ex.prev.top)} lb)</span>`; }
   else pl.textContent = ex.variant==='Standard' ? 'Pas d\'historique pour cet exercice — donne le ton.' : 'Première fois sur la variante « '+ex.variant+' » — donne le ton.';
   card.appendChild(pl);
 
@@ -1164,8 +1285,9 @@ function updateLive(active){
     const ex=active.exercises[cardRef.ei];
     cardRef.setRefs.forEach(sr=>{
       const st=ex.sets[sr.si]; const b=sr.badge; b.className='set-badge'; b.textContent='';
-      if(!st.done) return; const w=pnum(st.weight); if(w==null) return;
       const p=ex.prev&&ex.prev.sets[sr.si];
+      if(!st.done){ if(p){ b.classList.add('ref'); b.textContent=`Dernière : ${fmtNum(p.w)}${p.r!=null?'×'+fmtNum(p.r):''}${p.i!=null?' · RPE '+fmtNum(p.i):''}`; } return; }
+      const w=pnum(st.weight); if(w==null) return;
       if(!p){ b.classList.add('up'); b.textContent='✓ validé'; return; }
       const r=pnum(st.reps);
       if(w>p.w){ b.classList.add('up'); b.textContent=`↑ +${fmtNum(+(w-p.w).toFixed(1))} lb`; }
@@ -1212,7 +1334,9 @@ function openRecap(active){
     </div>`;
   if(prs.length){ const h=el('div','sub-h','Nouveaux records du bloc'); h.style.margin='18px 0 0'; m.appendChild(h); const pl=el('div','pr-list'); prs.forEach(p=>{ const x=el('div','pr'); x.innerHTML=`🏆 <span>${p.name}</span><span class="w">${fmtNum(p.w)} lb</span>`; pl.appendChild(x); }); m.appendChild(pl); }
   const btns=el('div','modal-btns');
-  const save=el('button','btn-primary'); save.innerHTML=svgCheck+' Enregistrer'; save.addEventListener('click',()=>{ saveActiveSession(active,vol,durMin); document.body.removeChild(bg); });
+  const save=el('button','btn-primary');
+  if(sd.d>0){ save.innerHTML=svgCheck+' Enregistrer'; save.addEventListener('click',()=>{ saveActiveSession(active,vol,durMin); document.body.removeChild(bg); }); }
+  else { save.textContent='Abandonner la séance'; save.style.background='var(--down)'; save.addEventListener('click',()=>{ document.body.removeChild(bg); STORE.clearActive(); renderTrain(); toast('Séance abandonnée (rien n\'a été enregistré)'); }); }
   const cancel=el('button','chip-btn ghost','Continuer la séance'); cancel.addEventListener('click',()=>document.body.removeChild(bg));
   btns.append(save,cancel); m.appendChild(btns); bg.appendChild(m);
   bg.addEventListener('click',e=>{ if(e.target===bg) document.body.removeChild(bg); });
@@ -1220,8 +1344,9 @@ function openRecap(active){
 }
 function saveActiveSession(active,vol,durMin){
   const session={ id:active.id, dayId:active.dayId, dayName:active.dayName, tag:active.tag, startTs:active.startTs, endTs:Date.now(), durationMin:durMin, dateISO:active.dateISO, home:!!active.home, totalVol:Math.round(vol),
-    exercises: active.exercises.map(ex=>({ name:ex.name, range:ex.range, variant:ex.variant||'Standard', rest:(ex.rest!=null&&String(ex.rest).trim()!=='')?String(ex.rest).trim():null, note:(ex.note!=null&&String(ex.note).trim()!=='')?String(ex.note).trim():null, sets: ex.sets.filter(s=>s.done && pnum(s.weight)!=null).map(s=>{ const iv=pnum(s.intensity); return {w:pnum(s.weight), r:pnum(s.reps), i:(iv!=null)?Math.max(0,Math.min(10,iv)):null}; }) })).filter(e=>e.sets.length) };
-  STORE.addSession(session); STORE.clearActive(); renderTrain(); renderAnalyse();
+    exercises: active.exercises.map(ex=>({ name:ex.name, range:ex.range, variant:ex.variant||'Standard', superset:ex.superset||null, rest:(ex.rest!=null&&String(ex.rest).trim()!=='')?String(ex.rest).trim():null, note:(ex.note!=null&&String(ex.note).trim()!=='')?String(ex.note).trim():null, sets: ex.sets.filter(s=>s.done && pnum(s.weight)!=null).map(s=>{ const iv=pnum(s.intensity); return {w:pnum(s.weight), r:pnum(s.reps), i:(iv!=null)?Math.max(0,Math.min(10,iv)):null}; }) })).filter(e=>e.sets.length) };
+  ssClean(session.exercises); session.exercises.forEach(e=>{ if(!e.superset) e.superset=null; });
+  if(session.exercises.length) STORE.addSession(session); STORE.clearActive(); renderTrain(); renderAnalyse();
 }
 
 /* ---------- view switch ---------- */
