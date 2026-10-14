@@ -26,9 +26,16 @@ sur téléphone comme sur ordinateur.
 Ouvrir le lien dans le navigateur mobile, puis *Partager → Ajouter à l'écran
 d'accueil* pour l'utiliser comme une application.
 
+## Blocs
+
+L'app gère plusieurs blocs de programme (sélecteur **Bloc 5 / Bloc 4** dans Analyse et dans
+S'entraîner). Les séances fessiers changent à chaque bloc ; les hauts du corps (Upper 1 / 2)
+sont communs. Un même exercice garde son historique d'un bloc à l'autre : « La dernière fois »
+et les records tiennent compte de tous les blocs.
+
 ## Source
 
-Données initiales importées depuis mon fichier Excel de suivi (Bloc 4). Charges
+Données initiales du Bloc 4 importées depuis mon fichier Excel de suivi ; les blocs suivants sont saisis dans l'app. Charges
 exprimées en livres (lb), telles que saisies.
 
 ---

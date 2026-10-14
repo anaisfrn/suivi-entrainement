@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Entraînement">
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E%3Ctext%20y='.9em'%20font-size='90'%3E🏋️%3C/text%3E%3C/svg%3E">
 <style>*{-webkit-tap-highlight-color:transparent;}</style>
-<title>Suivi d'entraînement — Bloc 4</title>
+<title>Suivi d'entraînement</title>
 <style>
   :root{
     color-scheme: light;
@@ -360,6 +360,14 @@
   .prev-line .pl-i{color:var(--muted); font-weight:600;}
   .set-badge.ref{color:var(--muted); font-weight:600;}
 
+  /* sélecteur de bloc */
+  .blocksel{display:inline-flex; gap:4px; background:var(--surface-2); border:1px solid var(--hair); border-radius:10px; padding:3px;}
+  .bsel{appearance:none; cursor:pointer; border:none; background:transparent; font-family:var(--font-mono); font-size:12px; font-weight:700; letter-spacing:.04em; color:var(--ink-2); padding:6px 11px; border-radius:7px;}
+  .bsel.on{background:var(--accent); color:var(--on-accent);}
+  .hero .blocksel{margin-bottom:14px;}
+  .sub-h-row{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;}
+  .sub-h-row .blocksel{text-transform:none; letter-spacing:0;}
+
   /* supersets */
   .ss-badge{display:inline-block; font-family:var(--font-mono); font-size:11px; font-weight:800; color:var(--on-accent); background:var(--accent); border-radius:6px; padding:2px 6px; margin-right:7px; vertical-align:2px; letter-spacing:.02em;}
   .ex-card.ss-in{border-left:3px solid var(--accent);}
@@ -435,7 +443,7 @@
 <header class="top">
   <div class="top-inner">
     <div class="brand">
-      <span class="mark">BLOC&nbsp;4</span>
+      <span class="mark" id="brandMark">BLOC 5</span>
       <h1>Suivi d'entraînement</h1>
       <span class="dates" id="hdrDates"></span>
     </div>
@@ -455,6 +463,7 @@
 
 <main id="analyse" class="wrap">
   <section class="hero">
+    <div class="blocksel" id="blockSelA" role="group" aria-label="Bloc"></div>
     <div class="eyebrow" id="eyebrow"></div>
     <h2>Chaque semaine, un peu plus lourd.</h2>
     <p class="lede">Toutes tes séances du bloc, exercice par exercice&nbsp;: ta charge de travail d'un coup d'œil et ta progression semaine après semaine. Charges en&nbsp;<b>livres&nbsp;(lb)</b>.</p>
@@ -476,7 +485,7 @@
   </section>
 
   <footer class="foot">
-    <div>Données importées de <span class="unit">« Suivi entrainement - bloc4.xlsx »</span> · toutes les charges sont en <span class="unit">livres (lb)</span>.</div>
+    <div><span id="footSrc"></span> · toutes les charges sont en <span class="unit">livres (lb)</span>.</div>
     <div style="margin-top:6px">Charge max = série la plus lourde · Volume = charge × répétitions · 1RM estimé = formule d'Epley · <span class="unit">◆</span> = séances enregistrées ici.</div>
   </footer>
 </main>
@@ -515,7 +524,7 @@ const METRICS = {
 };
 
 /* ---------- storage ---------- */
-let mem={sessions:[],active:null,vars:{added:{},renames:{}}};
+let mem={sessions:[],active:null,vars:{added:{},renames:{}},block:null};
 function lsGet(k){ try{return localStorage.getItem(k);}catch(e){return null;} }
 function lsSet(k,v){ try{localStorage.setItem(k,v);return true;}catch(e){return false;} }
 function lsDel(k){ try{localStorage.removeItem(k);}catch(e){} }
@@ -532,6 +541,93 @@ const STORE={
 /* nettoyage : une séance enregistrée sans aucun exercice (lancée par erreur) n'a pas lieu d'être */
 (function(){ const a=STORE.sessions(); const kept=a.filter(s=>(s.exercises||[]).length); if(kept.length!==a.length) STORE.saveSessions(kept); })();
 
+/* ---------- blocs ----------
+   Bloc 4 = données Excel (DATA.days d'origine) + séances enregistrées ici.
+   Les blocs suivants n'ont que des séances enregistrées ici. Les hauts du corps (Upper 1/2)
+   sont communs à tous les blocs : une séance appartient au bloc choisi au lancement
+   (champ `block`), ou à défaut au bloc couvrant sa date. */
+const planDay=(id,name,tag,exs)=>({id, name, tag, weekMeta:[], exercises:exs.map(e=>({name:e[0], range:e[1], sets:e[2], superset:e[3]||null, weeks:[]}))});
+DATA.days.push(
+  planDay('b5f1','Fessiers 1','Pro',[
+    ['KAS hip thrust','8-10 reps',3,'kas'],
+    ['Hip thrust (max reps)','max reps',3,'kas'],
+    ['Split squat fessiers','8-10 reps',2],
+    ['Hip rotation moyen fessiers','8-10 reps',2],
+    ['RDL barre guidée','8-10 reps',3],
+    ['Leg curl allongée','10-12 reps',3],
+  ]),
+  planDay('b5f2','Fessiers 2','Pro',[
+    ['Abductor glutes max','15-20 reps',4],
+    ['RDL squat belt','10-12 reps',3],
+    ['Extension ischios-fessiers','10-12 reps',3],
+    ['Leg press unilatérale fessiers','10-12 reps',2],
+    ['SLDL supporté unilatéral','12-15 reps',3],
+  ]),
+);
+const BLOCKS=[
+  {id:'b4', name:'Bloc 4', excel:true, days:['fessiers1','upper1','fessiers2','upper2','bonus']},
+  {id:'b5', name:'Bloc 5', start:'2026-09-28', days:['b5f1','upper1','b5f2','upper2']},
+];
+const K_BLOCK='wl-block-v1';
+function blockById(id){ return BLOCKS.find(b=>b.id===id)||BLOCKS[BLOCKS.length-1]; }
+function curBlock(){ return blockById(lsGet(K_BLOCK)||mem.block||BLOCKS[BLOCKS.length-1].id); }
+function setBlock(id){ mem.block=id; lsSet(K_BLOCK,id); }
+function blockDays(b){ return b.days.map(id=>DATA.days.find(d=>d.id===id)).filter(Boolean); }
+function blockOf(s){
+  if(s.block) return s.block;
+  for(let i=BLOCKS.length-1;i>=0;i--){ const b=BLOCKS[i]; if(b.days.indexOf(s.dayId)>=0 && (!b.start || (s.dateISO||'')>=b.start)) return b.id; }
+  return BLOCKS[0].id;
+}
+/* même exercice sous un autre nom selon le bloc → historique commun */
+const EX_ALIAS={'A1 - KAS hip thrust':'KAS hip thrust', 'Leg curl allongée (4 sets x 10-12)':'Leg curl allongée'};
+const exKey = n => EX_ALIAS[n]||n;
+
+/* ---------- séances du début du bloc 5 saisies hors de l'app ----------
+   Ajoutées une seule fois par appareil (drapeau K_SEED) ; jamais en double grâce à l'id. */
+const K_SEED='wl-seed-b5-v1';
+const seedEx=(name,variant,rest,sets,o)=>Object.assign({name, variant, rest, note:null, superset:null, sets:sets.map(s=>({w:s[0], r:s[1], i:s[2]!=null?s[2]:null}))}, o||{});
+const SEED_B5=[
+  {dayId:'b5f2', date:'2026-09-30', min:67, home:false, ex:[
+    seedEx('Abductor glutes max','Standard','0:15',[[155,15,9],[155,15,9],[150,15,9],[150,15,9]]),
+    seedEx('RDL squat belt','Standard','2',[[90,12,7],[115,10,8],[115,10,8]]),
+    seedEx('Extension ischios-fessiers','Standard','2',[[60,10,9],[60,10,9],[60,10,9]]),
+    seedEx('Leg press unilatérale fessiers','Standard','1:30',[[45,10],[45,10,8]],{note:'Warmup 0 lb × 8'}),
+    seedEx('SLDL supporté unilatéral','Leg curl assise',null,[[50,12,5],[70,12,8],[70,12,8]]),
+  ]},
+  {dayId:'b5f1', date:'2026-10-05', min:72, home:true, ex:[
+    seedEx('KAS hip thrust','Smith','2',[[70,8],[120,8],[120,8]],{superset:'kas'}),
+    seedEx('Hip thrust (max reps)','Smith','2',[[70,13],[120,7],[120,8]],{superset:'kas'}),
+    seedEx('Split squat fessiers','Standard',null,[[40,10,7],[40,12,9]]),
+    seedEx('Hip rotation moyen fessiers','Smith',null,[[0,10],[0,10]],{note:'Mouvement très difficile'}),
+    seedEx('RDL barre guidée','Standard',null,[[50,10],[70,8],[70,8,9]],{note:'Sans sangles'}),
+    seedEx('Leg curl allongée','SLDL DB',null,[[10,10,4],[10,10,4],[10,10,4]]),
+  ]},
+  {dayId:'b5f2', date:'2026-10-11', min:62, home:false, ex:[
+    seedEx('Abductor glutes max','Standard','0:15',[[150,20,9],[150,15,9],[150,15,9],[150,15,9]]),
+    seedEx('RDL squat belt','Standard','2',[[115,10,8],[115,10,8],[115,10,8]]),
+    seedEx('Extension ischios-fessiers','Glute ham raise','2',[[25,6],[0,10],[0,10,8]],{note:'S1 : 25 lb × 6 puis 5 reps à 0 lb — tirage sévère sur l\'arrière de la jambe !'}),
+    seedEx('Leg press unilatérale fessiers','Standard','1:30',[[45,10],[45,10,8]],{note:'Warmup 0 lb × 8'}),
+    seedEx('SLDL supporté unilatéral','Leg extension',null,[[45,13,8],[45,13,8],[50,12,9]]),
+  ]},
+  {dayId:'upper2', date:'2026-10-13', min:51, home:true, ex:[
+    seedEx('Shoulder press','Smith','2',[[20,8,8],[20,9,8],[20,8,9]]),
+    seedEx('Lateral raises DB - unilatéral','Poulie','1:30',[[10,15,7],[15,10,8],[15,12,9]]),
+    seedEx('Reverse fly poulie haute, unilatéral','Standard','2',[[10,12,6],[15,12,7],[15,12,7]],{superset:'rf'}),
+    seedEx('Tricep pushdown unilatéral (supi)','Poulie corde','2',[[45,15,8],[45,12,8],[45,10,8]],{superset:'rf'}),
+    seedEx('Bicep curl poulie (poignée uni ou barre bi)','Poulie corde','1:30',[[35,15,7],[40,12,7]]),
+  ]},
+];
+(function seedB5(){
+  if(lsGet(K_SEED)) return;
+  const a=STORE.sessions(); const seen={}; a.forEach(s=>seen[s.id]=1);
+  SEED_B5.forEach(sd=>{
+    const day=DATA.days.find(d=>d.id===sd.dayId); const startTs=Date.parse(sd.date+'T12:00:00'); const id='seed-b5-'+sd.date+'-'+sd.dayId; if(seen[id]) return;
+    let vol=0; sd.ex.forEach(e=>{ const dex=day.exercises.find(x=>x.name===e.name); e.range=dex?dex.range:null; e.sets.forEach(s=>{ vol+=s.w*s.r; }); });
+    a.push({id, block:'b5', dayId:sd.dayId, dayName:day.name, tag:day.tag, startTs, endTs:startTs+sd.min*60000, durationMin:sd.min, dateISO:sd.date, home:sd.home, totalVol:Math.round(vol), exercises:sd.ex});
+  });
+  STORE.saveSessions(a); lsSet(K_SEED,'1');
+})();
+
 /* ---------- history model (excel weeks + logged) ---------- */
 function excelSessionsFor(dayId){
   const day=DATA.days.find(d=>d.id===dayId); if(!day) return [];
@@ -542,48 +638,48 @@ function excelSessionsFor(dayId){
     day.exercises.forEach(ex=>{
       const w=ex.weeks[wi]; const sets=[];
       for(let i=0;i<3;i++){ const sw=setW(w.weights[i]), sr=setR(w.reps[i]); if(sw!=null) sets.push({w:sw, r:sr}); }
-      if(sets.length){ const top=Math.max(...sets.map(s=>s.w)); let vol=0,anyv=false; sets.forEach(s=>{if(s.r!=null){vol+=s.w*s.r;anyv=true;}}); if(anyv) totalVol+=vol; exMap[ex.name]={sets, top, vol:anyv?vol:null, variant:w.variant||'Standard'}; }
+      if(sets.length){ const top=Math.max(...sets.map(s=>s.w)); let vol=0,anyv=false; sets.forEach(s=>{if(s.r!=null){vol+=s.w*s.r;anyv=true;}}); if(anyv) totalVol+=vol; exMap[exKey(ex.name)]={sets, top, vol:anyv?vol:null, rest:w.rest||null, variant:w.variant||'Standard'}; }
     });
-    out.push({ts:Date.parse(wm.date), dateISO:wm.date, source:'excel', label:'Sem. '+wm.week, home:wm.home, exMap, totalVol});
+    out.push({ts:Date.parse(wm.date), dateISO:wm.date, source:'excel', label:'Sem. '+wm.week, home:wm.home, exMap, totalVol, dayId, block:'b4'});
   });
   return out;
 }
-function loggedSessionsFor(dayId){
-  return STORE.sessions().filter(s=>s.dayId===dayId).map(s=>{
-    const exMap={}; let totalVol=0;
-    (s.exercises||[]).forEach(e=>{ const sets=(e.sets||[]).map(x=>({w:x.w,r:x.r,i:(x.i!=null?x.i:null)})); if(sets.length){ const valid=sets.filter(x=>x.w!=null); const top=valid.length?Math.max(...valid.map(x=>x.w)):null; let vol=0,anyv=false; sets.forEach(x=>{if(x.w!=null&&x.r!=null){vol+=x.w*x.r;anyv=true;}}); if(anyv) totalVol+=vol; exMap[e.name]={sets, top, vol:anyv?vol:null, rest:e.rest||null, note:e.note||null, variant:e.variant||'Standard'}; } });
-    return {ts:s.startTs, dateISO:s.dateISO, source:'log', label:frDate(s.dateISO), home:!!s.home, exMap, totalVol, id:s.id};
-  });
+function logToHist(s){
+  const exMap={}; let totalVol=0;
+  (s.exercises||[]).forEach(e=>{ const sets=(e.sets||[]).map(x=>({w:x.w,r:x.r,i:(x.i!=null?x.i:null)})); if(sets.length){ const valid=sets.filter(x=>x.w!=null); const top=valid.length?Math.max(...valid.map(x=>x.w)):null; let vol=0,anyv=false; sets.forEach(x=>{if(x.w!=null&&x.r!=null){vol+=x.w*x.r;anyv=true;}}); if(anyv) totalVol+=vol; exMap[exKey(e.name)]={sets, top, vol:anyv?vol:null, rest:e.rest||null, note:e.note||null, variant:e.variant||'Standard'}; } });
+  return {ts:s.startTs, dateISO:s.dateISO, source:'log', label:frDate(s.dateISO), home:!!s.home, exMap, totalVol, id:s.id, dayId:s.dayId, block:blockOf(s)};
 }
-function allSessionsFor(dayId){ return excelSessionsFor(dayId).concat(loggedSessionsFor(dayId)).sort((a,b)=>a.ts-b.ts); }
+/* blockId facultatif : limite aux séances de ce bloc */
+function loggedSessionsFor(dayId, blockId){ return STORE.sessions().filter(s=>s.dayId===dayId && (!blockId || blockOf(s)===blockId)).map(logToHist); }
+function allSessionsFor(dayId, blockId){ const xl=(!blockId||blockById(blockId).excel)? excelSessionsFor(dayId) : []; return xl.concat(loggedSessionsFor(dayId, blockId)).sort((a,b)=>a.ts-b.ts); }
+/* toutes les séances, tous types et tous blocs confondus (historique par exercice) */
+function allSessionsAny(){ const xl=[]; DATA.days.forEach(d=>xl.push(...excelSessionsFor(d.id))); return xl.concat(STORE.sessions().map(logToHist)).sort((a,b)=>a.ts-b.ts); }
 function previousSessionFor(dayId, beforeTs){
   const c=allSessionsFor(dayId).filter(s=>s.ts<beforeTs);
   return c.length? c[c.length-1] : null;
 }
-function individualPrev(dayId, exName, beforeTs){
-  const c=allSessionsFor(dayId).filter(s=>s.ts<beforeTs && s.exMap[exName]);
-  if(!c.length) return null; const s=c[c.length-1]; const e=s.exMap[exName];
-  return {sets:e.sets, top:e.top, vol:e.vol, dateISO:s.dateISO, source:s.source};
-}
-function allTimeBest(dayId, exName){
-  let best=null; allSessionsFor(dayId).forEach(s=>{ const e=s.exMap[exName]; if(e&&e.top!=null&&(best==null||e.top>best)) best=e.top; }); return best;
-}
 function latestRest(dayId, exName){
-  const day=DATA.days.find(d=>d.id===dayId); if(!day) return null; const ex=day.exercises.find(e=>e.name===exName); if(!ex) return null;
-  for(let i=ex.weeks.length-1;i>=0;i--){ if(ex.weeks[i].rest) return ex.weeks[i].rest; } return null;
+  const k=exKey(exName); const a=allSessionsAny();
+  for(let i=a.length-1;i>=0;i--){ const e=a[i].exMap[k]; if(e && e.rest) return e.rest; }
+  return null;
 }
 function lastDoneFor(dayId){ const a=allSessionsFor(dayId); return a.length? a[a.length-1] : null; }
 
 /* ---------- variants ---------- */
 const K_VAR='wl-variants-v1';
-function vStore(){ const r=lsGet(K_VAR); if(r!=null){ try{ const o=JSON.parse(r); o.added=o.added||{}; o.renames=o.renames||{}; return o; }catch(e){} } return mem.vars; }
+function vNormalize(o){
+  ['added','renames'].forEach(f=>{ const src=o[f]||{}; const dst={}; Object.keys(src).forEach(k=>{ const kk=exKey(k);
+    if(f==='added'){ dst[kk]=(dst[kk]||[]).concat(src[k].filter(v=>(dst[kk]||[]).indexOf(v)<0)); } else { dst[kk]=Object.assign(dst[kk]||{}, src[k]); } }); o[f]=dst; });
+  return o;
+}
+function vStore(){ const r=lsGet(K_VAR); if(r!=null){ try{ return vNormalize(JSON.parse(r)); }catch(e){} } return vNormalize(mem.vars); }
 function vSave(o){ mem.vars=o; lsSet(K_VAR, JSON.stringify(o)); }
-function resolveVariant(exName, raw){ raw=raw||'Standard'; const rn=(vStore().renames||{})[exName]||{}; let v=raw, g=0; while(rn[v] && g++<25) v=rn[v]; return v; }
-function addedVariants(exName){ return (vStore().added||{})[exName]||[]; }
-function dataVariantsFor(day, ex){
-  const out=[]; const push=v=>{ if(out.indexOf(v)<0) out.push(v); };
-  ex.weeks.forEach(w=>{ if(w.done) push(resolveVariant(ex.name, w.variant)); });
-  loggedSessionsFor(day.id).forEach(s=>{ const e=s.exMap[ex.name]; if(e) push(resolveVariant(ex.name, e.variant)); });
+function resolveVariant(exName, raw){ raw=raw||'Standard'; const rn=(vStore().renames||{})[exKey(exName)]||{}; let v=raw, g=0; while(rn[v] && g++<25) v=rn[v]; return v; }
+function addedVariants(exName){ return (vStore().added||{})[exKey(exName)]||[]; }
+/* variantes présentes dans les données (par défaut : tout l'historique, tous blocs) */
+function dataVariantsFor(day, ex, sessions){
+  const out=[]; const push=v=>{ if(out.indexOf(v)<0) out.push(v); }; const k=exKey(ex.name);
+  (sessions||allSessionsAny()).forEach(s=>{ const e=s.exMap[k]; if(e) push(resolveVariant(ex.name, e.variant)); });
   const si=out.indexOf('Standard'); if(si>0){ out.splice(si,1); out.unshift('Standard'); }
   return out;
 }
@@ -593,19 +689,19 @@ function distinctVariantsFor(day, ex){
   addedVariants(ex.name).forEach(v=>{ if(out.indexOf(v)<0) out.push(v); });
   return out;
 }
-function defaultVariant(day, ex){
-  let latest=null, lv='Standard';
-  ex.weeks.forEach(w=>{ if(w.done){ const t=Date.parse(day.weekMeta[w.week-1].date); if(latest==null||t>latest){ latest=t; lv=resolveVariant(ex.name, w.variant); } } });
-  loggedSessionsFor(day.id).forEach(s=>{ const e=s.exMap[ex.name]; if(e && (latest==null||s.ts>latest)){ latest=s.ts; lv=resolveVariant(ex.name, e.variant); } });
+function defaultVariant(day, ex, sessions){
+  const k=exKey(ex.name); let lv='Standard';
+  (sessions||allSessionsAny()).forEach(s=>{ const e=s.exMap[k]; if(e) lv=resolveVariant(ex.name, e.variant); });
   return lv;
 }
 function exVariantPrev(dayId, exName, variant, beforeTs){
-  const c=allSessionsFor(dayId).filter(s=>{ const e=s.exMap[exName]; return e && s.ts<beforeTs && resolveVariant(exName, e.variant)===variant; });
-  if(!c.length) return null; const s=c[c.length-1]; const e=s.exMap[exName];
-  return {sets:e.sets, top:e.top, vol:e.vol, dateISO:s.dateISO, source:s.source};
+  const k=exKey(exName);
+  const c=allSessionsAny().filter(s=>{ const e=s.exMap[k]; return e && s.ts<beforeTs && resolveVariant(exName, e.variant)===variant; });
+  if(!c.length) return null; const s=c[c.length-1]; const e=s.exMap[k];
+  return {sets:e.sets, top:e.top, vol:e.vol, dateISO:s.dateISO, source:s.source, block:s.block};
 }
 function allTimeBestVariant(dayId, exName, variant){
-  let best=null; allSessionsFor(dayId).forEach(s=>{ const e=s.exMap[exName]; if(e && resolveVariant(exName,e.variant)===variant && e.top!=null && (best==null||e.top>best)) best=e.top; }); return best;
+  const k=exKey(exName); let best=null; allSessionsAny().forEach(s=>{ const e=s.exMap[k]; if(e && resolveVariant(exName,e.variant)===variant && e.top!=null && (best==null||e.top>best)) best=e.top; }); return best;
 }
 
 /* ---------- supersets ----------
@@ -644,55 +740,71 @@ function buildSsJoin(exs, i, onChange){
 }
 function ssBadgeHtml(lab){ return lab? `<span class="ss-badge">${lab}</span>` : ''; }
 
-/* ---------- global stats (analyse) ---------- */
-function computeStats(){
-  const sessions=[]; let tonnage=0;
-  for(const d of DATA.days){
-    for(const wm of d.weekMeta){ if(wm.done) sessions.push(wm); }
-    for(const ex of d.exercises) for(const w of ex.weeks){ if(w.done){ const v=weekVolume(w); if(v) tonnage+=v; } }
-  }
-  const dates=sessions.map(s=>s.date).filter(Boolean).sort();
-  const mins=sessions.reduce((a,s)=>a+(s.minutes||0),0);
-  const home=sessions.filter(s=>s.home).length;
-  return {n:sessions.length, first:dates[0], last:dates[dates.length-1], mins, home, gym:sessions.length-home, tonnage};
+/* ---------- global stats (analyse, par bloc) ---------- */
+function computeStats(b){
+  let n=0, xn=0, mins=0, home=0, ton=0; const dates=[];
+  blockDays(b).forEach(d=>{
+    if(b.excel){
+      d.weekMeta.forEach(wm=>{ if(wm.done){ n++; xn++; mins+=(wm.minutes||0); if(wm.home) home++; if(wm.date) dates.push(wm.date); } });
+      d.exercises.forEach(ex=>ex.weeks.forEach(w=>{ if(w.done){ const v=weekVolume(w); if(v) ton+=v; } }));
+    }
+  });
+  STORE.sessions().forEach(s=>{ if(blockOf(s)!==b.id || b.days.indexOf(s.dayId)<0) return; n++; mins+=(s.durationMin||0); if(s.home) home++; ton+=(s.totalVol||0); if(s.dateISO) dates.push(s.dateISO); });
+  dates.sort(); const first=dates[0]||null, last=dates[dates.length-1]||null;
+  const weeks= first? Math.max(1, Math.round((Date.parse(last)-Date.parse(first))/(7*864e5))) : 0;
+  return {n, xn, ln:n-xn, first, last, mins, home, gym:n-home, ton, weeks};
 }
-const S=computeStats();
 function hoursLabel(m){ const h=Math.floor(m/60), mm=m%60; return `${h}h${String(mm).padStart(2,'0')}`; }
 
-$('#hdrDates').textContent = `${frDate(S.first)}–${frDate(S.last)}`;
-$('#eyebrow').textContent = `BLOC 4 · ${monShort(S.first).toUpperCase()} → ${monShort(S.last).toUpperCase()} 2026`;
-
 function kpi(lab,val,sub,lead){ const c=el('div','kpi'+(lead?' lead':'')); c.appendChild(el('div','lab',lab)); const v=el('div','val'); v.innerHTML=val; c.appendChild(v); if(sub) c.appendChild(el('div','sub',sub)); return c; }
-function loggedStatsAll(){ let n=0,mins=0,home=0,vol=0; STORE.sessions().forEach(s=>{ n++; mins+=(s.durationMin||0); if(s.home)home++; vol+=(s.totalVol||0); }); return {n,mins,home,vol}; }
+function renderHeader(){
+  const b=curBlock(), S=computeStats(b);
+  $('#brandMark').textContent=b.name.toUpperCase();
+  $('#hdrDates').textContent = S.first? `${frDate(S.first)}–${frDate(S.last)}` : '';
+  $('#eyebrow').textContent = S.first? `${b.name.toUpperCase()} · ${monShort(S.first).toUpperCase()} → ${monShort(S.last).toUpperCase()} ${S.last.slice(0,4)}` : `${b.name.toUpperCase()} · C'EST PARTI`;
+  $('#footSrc').innerHTML = b.excel? 'Données importées de <span class="unit">« Suivi entrainement - bloc4.xlsx »</span> + séances enregistrées ici' : 'Séances enregistrées dans l\'app';
+  document.title=`Suivi d'entraînement — ${b.name}`;
+  renderBlockSel($('#blockSelA'));
+}
 function renderKpis(){
-  const L=loggedStatsAll();
-  const n=S.n+L.n, mins=S.mins+L.mins, ton=S.tonnage+L.vol, home=S.home+L.home, gym=n-home;
+  const b=curBlock(), S=computeStats(b);
   const wrap=$('#kpis'); wrap.innerHTML='';
   wrap.append(
-    kpi('Séances réalisées', `${n}`, L.n? `${S.n} du bloc + ${L.n} enregistrée${L.n>1?'s':''}` : 'sur 6 semaines de bloc', true),
-    kpi('Temps en séance', `${hoursLabel(mins)}`, n? `≈ ${Math.round(mins/n)} min / séance` : ''),
-    kpi('Volume total', `${fmtK(ton)}<small> lb</small>`, 'charge × reps cumulés'),
-    kpi('Salle / Maison', `${gym}<small> / </small>${home}`, n? `${Math.round(home/n*100)} % à la maison` : ''),
-    kpi('Régularité', `${(n/9).toFixed(1).replace('.',',')}<small> /sem</small>`, 'moyenne'),
+    kpi('Séances réalisées', `${S.n}`, b.excel&&S.ln? `${S.xn} du fichier + ${S.ln} enregistrée${S.ln>1?'s':''}` : (S.n? 'enregistrées ici' : 'aucune pour l\'instant'), true),
+    kpi('Temps en séance', `${hoursLabel(S.mins)}`, S.n? `≈ ${Math.round(S.mins/S.n)} min / séance` : ''),
+    kpi('Volume total', `${fmtK(S.ton)}<small> lb</small>`, 'charge × reps cumulés'),
+    kpi('Salle / Maison', `${S.gym}<small> / </small>${S.home}`, S.n? `${Math.round(S.home/S.n*100)} % à la maison` : ''),
+    kpi('Régularité', S.n? `${(S.n/S.weeks).toFixed(1).replace('.',',')}<small> /sem</small>` : '–', S.n? `moyenne sur ${S.weeks} sem.` : ''),
   );
 }
-renderKpis();
+/* sélecteur de bloc (partagé Analyse / S'entraîner) */
+function renderBlockSel(host){
+  if(!host) return; host.innerHTML=''; const cur=curBlock();
+  BLOCKS.slice().reverse().forEach(b=>{ const t=el('button','bsel'+(b.id===cur.id?' on':''), b.name); t.type='button'; t.setAttribute('aria-pressed', b.id===cur.id?'true':'false');
+    t.addEventListener('click',()=>{ if(b.id===cur.id) return; setBlock(b.id); resetAnalyseSel(); renderAll(); }); host.appendChild(t); });
+}
 
 /* ---------- analyse state ---------- */
-let dayIdx = Math.max(0, DATA.days.findIndex(d=>d.exercises.some(e=>e.weeks.some(w=>w.done))));
-let exIdx=0, metric='top', variantSel=null;
-function firstDoneEx(day){ const i=day.exercises.findIndex(e=>e.weeks.some(w=>w.done)); return i<0?0:i; }
+let dayIdx=0, exIdx=0, metric='top', variantSel=null;
+function curDays(){ return blockDays(curBlock()); }
+function dayDoneCount(d){ const b=curBlock(); return allSessionsFor(d.id, b.id).length; }
+function firstDoneEx(day){ const b=curBlock(); const ss=allSessionsFor(day.id, b.id); const i=day.exercises.findIndex(e=>ss.some(s=>s.exMap[exKey(e.name)])); return i<0?0:i; }
+function resetAnalyseSel(){ const ds=curDays(); dayIdx=Math.max(0, ds.findIndex(d=>dayDoneCount(d)>0)); exIdx=firstDoneEx(ds[dayIdx]); variantSel=null; }
+resetAnalyseSel();
 
 /* tabs */
 const tabsEl=$('#tabs');
-DATA.days.forEach((d,i)=>{
-  const done=d.weekMeta.filter(w=>w.done).length;
-  const t=el('button','tab'); t.setAttribute('role','tab'); t.type='button';
-  t.setAttribute('aria-selected', i===dayIdx?'true':'false');
-  t.innerHTML=`<span>${d.name}</span>`+(d.tag?`<span class="tab-tag">${d.tag}</span>`:'')+`<span class="tab-n">${done?done+' sem.':'—'}</span>`;
-  t.addEventListener('click',()=>{ dayIdx=i; exIdx=firstDoneEx(DATA.days[i]); variantSel=null; renderAnalyse(); });
-  tabsEl.appendChild(t);
-});
+function renderTabs(){
+  tabsEl.innerHTML='';
+  curDays().forEach((d,i)=>{
+    const done=dayDoneCount(d);
+    const t=el('button','tab'); t.setAttribute('role','tab'); t.type='button';
+    t.setAttribute('aria-selected', i===dayIdx?'true':'false');
+    t.innerHTML=`<span>${d.name}</span>`+(d.tag?`<span class="tab-tag">${d.tag}</span>`:'')+`<span class="tab-n">${done?done+'×':'—'}</span>`;
+    t.addEventListener('click',()=>{ dayIdx=i; exIdx=firstDoneEx(d); variantSel=null; renderAnalyse(); });
+    tabsEl.appendChild(t);
+  });
+}
 
 /* color helpers */
 function hexToRgb(h){h=h.trim().replace('#','');return [0,2,4].map(i=>parseInt(h.slice(i,i+2),16));}
@@ -703,13 +815,12 @@ function lumOf(rgb){const m=rgb.match(/\d+/g).map(Number);const f=c=>{c/=255;ret
 /* ---------- analyse render ---------- */
 const panel=$('#panel');
 function renderAnalyse(){
-  renderKpis();
-  [...tabsEl.children].forEach((t,i)=>t.setAttribute('aria-selected', i===dayIdx?'true':'false'));
-  const day=DATA.days[dayIdx]; panel.innerHTML='';
+  renderHeader(); renderKpis(); renderTabs();
+  const B=curBlock(); const day=curDays()[dayIdx]; panel.innerHTML='';
   const head=el('div','panel-head'); head.appendChild(el('div','ptitle',day.name));
-  const doneWeeks=day.weekMeta.filter(w=>w.done).length;
-  const logged=loggedSessionsFor(day.id).length;
-  head.appendChild(el('div','psub', doneWeeks? `${doneWeeks} séance${doneWeeks>1?'s':''} du bloc · ${day.exercises.length} exercices`+(logged?` · ${logged} enregistrée${logged>1?'s':''} ici`:'') : 'Séance planifiée pour ce bloc'));
+  const doneWeeks=B.excel? day.weekMeta.filter(w=>w.done).length : 0;
+  const logged=loggedSessionsFor(day.id, B.id).length;
+  head.appendChild(el('div','psub', doneWeeks? `${doneWeeks} séance${doneWeeks>1?'s':''} du fichier · ${day.exercises.length} exercices`+(logged?` · ${logged} enregistrée${logged>1?'s':''} ici`:'') : (logged? `${logged} séance${logged>1?'s':''} · ${day.exercises.length} exercices` : 'Séance planifiée pour ce bloc')));
   panel.appendChild(head);
   if(!doneWeeks && !logged){
     const es=el('div','empty-state');
@@ -722,7 +833,14 @@ function renderAnalyse(){
 }
 
 function buildWeeks(day){
-  const wrap=el('div','weeks');
+  const wrap=el('div','weeks'); const B=curBlock();
+  if(!B.excel){
+    loggedSessionsFor(day.id, B.id).sort((a,b)=>a.ts-b.ts).forEach((s,i)=>{ const raw=STORE.sessions().find(x=>x.id===s.id)||{};
+      const c=el('div','wk'); c.appendChild(el('div','wl','SÉANCE '+(i+1))); c.appendChild(el('div','wd', monShort(s.dateISO))); c.appendChild(el('div','wt', raw.durationMin?hoursLabel(raw.durationMin):'—'));
+      if(s.home){ c.appendChild(el('span','home','🏠')); c.appendChild(el('span','badge','MAISON')); }
+      c.style.cursor='pointer'; c.addEventListener('click',()=>openSessionDetail(s.id)); wrap.appendChild(c); });
+    return wrap;
+  }
   day.weekMeta.forEach(wm=>{
     const c=el('div','wk'+(wm.done?'':' miss'));
     c.appendChild(el('div','wl','SEM. '+wm.week));
@@ -737,15 +855,16 @@ function buildWeeks(day){
 function buildHeat(day){
   const wrap=el('div','heat-wrap'); const tbl=el('table','heat');
   const cols=[];
-  for(let wi=0;wi<6;wi++) cols.push({kind:'excel', wi, label:'S'+(wi+1), home:day.weekMeta[wi].home});
-  loggedSessionsFor(day.id).slice().sort((a,b)=>a.ts-b.ts).forEach(s=>cols.push({kind:'log', s, label:frDate(s.dateISO), home:s.home}));
+  const B=curBlock();
+  if(B.excel) day.weekMeta.forEach((wm,wi)=>cols.push({kind:'excel', wi, label:'S'+(wi+1), home:wm.home}));
+  loggedSessionsFor(day.id, B.id).slice().sort((a,b)=>a.ts-b.ts).forEach(s=>cols.push({kind:'log', s, label:frDate(s.dateISO), home:s.home}));
   const thead=el('thead'); const htr=el('tr'); htr.appendChild(el('th','exh','Exercice'));
   cols.forEach(c=>htr.appendChild(el('th', c.kind==='log'?'logh':null, c.kind==='log'?('◆'+c.label):c.label)));
   htr.appendChild(el('th',null,'PR')); thead.appendChild(htr); tbl.appendChild(thead);
   const tb=el('tbody'); const lo=readVar('--heat-lo'), hi=readVar('--heat-hi');
   const cellOf=(ex,c)=>{
     if(c.kind==='excel'){ const w=ex.weeks[c.wi]; return w.topWeight!=null? {top:w.topWeight, reps:w.topReps, variant:resolveVariant(ex.name,w.variant), home:c.home, kind:'excel', w, wi:c.wi} : null; }
-    const e=c.s.exMap[ex.name]; if(!e||e.top==null) return null; const tset=e.sets.find(x=>x.w===e.top)||{}; return {top:e.top, reps:(tset.r==null?null:tset.r), variant:resolveVariant(ex.name,e.variant), home:c.home, kind:'log', e, s:c.s};
+    const e=c.s.exMap[exKey(ex.name)]; if(!e||e.top==null) return null; const tset=e.sets.find(x=>x.w===e.top)||{}; return {top:e.top, reps:(tset.r==null?null:tset.r), variant:resolveVariant(ex.name,e.variant), home:c.home, kind:'log', e, s:c.s};
   };
   day.exercises.forEach((ex,ei)=>{
     const tr=el('tr','exrow'+(ei===exIdx?' sel':'')); tr.tabIndex=0; tr.setAttribute('role','button'); tr.setAttribute('aria-label','Progression de '+ex.name);
@@ -789,8 +908,9 @@ function buildHeat(day){
 
 function buildDetail(day){
   const ex=day.exercises[exIdx]; const wrap=el('div','detail');
-  const vdata=dataVariantsFor(day, ex);
-  if(!variantSel || vdata.indexOf(variantSel)<0) variantSel=defaultVariant(day, ex);
+  const B=curBlock(); const bSess=allSessionsFor(day.id, B.id);
+  const vdata=dataVariantsFor(day, ex, bSess);
+  if(!variantSel || vdata.indexOf(variantSel)<0) variantSel=defaultVariant(day, ex, bSess);
   const cc=el('div','chart-col'); const ch=el('div','chart-head');
   const ctw=el('div'); ctw.appendChild(el('div','ct',ex.name));
   const rec=allTimeBestVariant(day.id, ex.name, variantSel);
@@ -805,7 +925,7 @@ function buildDetail(day){
     cc.appendChild(vf);
   }
   const box=el('div','chart-box'); box.appendChild(buildChart(day,ex)); cc.appendChild(box);
-  const hasLog=loggedSessionsFor(day.id).some(s=>s.exMap[ex.name]);
+  const hasLog=loggedSessionsFor(day.id, B.id).some(s=>s.exMap[exKey(ex.name)]);
   const lg=el('div','cf-legend');
   lg.innerHTML=`<span><span class="dotf"></span> En salle</span><span><span class="doth"></span> À la maison</span>`+(hasLog?`<span><span class="dial"></span> Enregistrée ici</span>`:'')+`<span style="color:var(--muted)">Survole un point</span>`;
   cc.appendChild(lg); wrap.appendChild(cc);
@@ -814,7 +934,7 @@ function buildDetail(day){
   const tbl=el('table','log'); const thead=el('thead'); const tr=el('tr'); ['Séance','Variante','Séries','Poids','Reps','Repos','Int.'].forEach(h=>tr.appendChild(el('th',null,h))); thead.appendChild(tr); tbl.appendChild(thead);
   const tb=el('tbody');
   const vCell=raw=>{ const vv=resolveVariant(ex.name,raw); const c=el('td'); c.innerHTML = vv==='Standard' ? '<span class="muted">—</span>' : '<span class="pill">'+esc(vv)+'</span>'; return c; };
-  ex.weeks.forEach((w,wi)=>{
+  (B.excel?ex.weeks:[]).forEach((w,wi)=>{
     const wm=day.weekMeta[wi]; const r=el('tr', w.done?'':'tr-miss');
     const wk=el('td','wk'); wk.innerHTML=`S${w.week}`+(wm.home?' <span class="hm">🏠</span>':''); r.appendChild(wk);
     if(w.done){
@@ -827,8 +947,8 @@ function buildDetail(day){
     } else { const c=el('td','muted'); c.colSpan=6; c.textContent='non réalisée'; r.appendChild(c); }
     tb.appendChild(r);
   });
-  loggedSessionsFor(day.id).filter(s=>s.exMap[ex.name]).sort((a,b)=>a.ts-b.ts).forEach(s=>{
-    const e=s.exMap[ex.name]; const r=el('tr','tr-log');
+  loggedSessionsFor(day.id, B.id).filter(s=>s.exMap[exKey(ex.name)]).sort((a,b)=>a.ts-b.ts).forEach(s=>{
+    const e=s.exMap[exKey(ex.name)]; const r=el('tr','tr-log');
     const wk=el('td','wk'); wk.innerHTML=`<span class="lg">◆ ${frDate(s.dateISO)}</span>`+(s.home?' <span class="hm">🏠</span>':''); r.appendChild(wk);
     r.appendChild(vCell(e.variant));
     r.appendChild(el('td','setv nser', String(e.sets.length)));
@@ -858,8 +978,9 @@ function buildChart(day,ex){
   const W=640,H=286, ml=42,mr=26,mt=24,mb=44; const iw=W-ml-mr, ih=H-mt-mb; const M=METRICS[metric];
   const vsel=variantSel;
   const series=[];
-  ex.weeks.forEach((w,wi)=>{ const wm=day.weekMeta[wi]; if(w.done&&wm.date && resolveVariant(ex.name,w.variant)===vsel){ const v=M.val(w); if(v!=null) series.push({key:'S'+w.week, dateISO:wm.date, v, w, home:wm.home, source:'excel'}); } });
-  loggedSessionsFor(day.id).forEach(s=>{ const e=s.exMap[ex.name]; if(e && resolveVariant(ex.name,e.variant)===vsel){ const v=loggedMetric(e,metric); if(v!=null) series.push({key:frDate(s.dateISO), dateISO:s.dateISO, v, logged:e, home:!!s.home, source:'log'}); } });
+  const B=curBlock();
+  (B.excel?ex.weeks:[]).forEach((w,wi)=>{ const wm=day.weekMeta[wi]; if(w.done&&wm.date && resolveVariant(ex.name,w.variant)===vsel){ const v=M.val(w); if(v!=null) series.push({key:'S'+w.week, dateISO:wm.date, v, w, home:wm.home, source:'excel'}); } });
+  loggedSessionsFor(day.id, B.id).forEach(s=>{ const e=s.exMap[exKey(ex.name)]; if(e && resolveVariant(ex.name,e.variant)===vsel){ const v=loggedMetric(e,metric); if(v!=null) series.push({key:frDate(s.dateISO), dateISO:s.dateISO, v, logged:e, home:!!s.home, source:'log'}); } });
   series.sort((a,b)=>Date.parse(a.dateISO)-Date.parse(b.dateISO));
 
   const NS='http://www.w3.org/2000/svg';
@@ -924,19 +1045,25 @@ const svgCheck='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strok
 const svgGo='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
 const svgTrash='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 13h10l1-13"/></svg>';
 
+/* séries pré-remplies avec la dernière perf ; nombre de séries = programme, sinon dernière fois, sinon 3 */
+function prefillSets(p, planSets){
+  const n=planSets || ((p&&p.sets.length)?p.sets.length:3); const sets=[];
+  for(let i=0;i<n;i++){ const ps=p&&p.sets.length? p.sets[Math.min(i,p.sets.length-1)] : null; sets.push({weight: ps?String(ps.w):'', reps:(ps&&ps.r!=null)?String(ps.r):'', intensity:'', done:false}); }
+  return sets;
+}
 function startSession(dayId){
   const day=DATA.days.find(d=>d.id===dayId); const startTs=Date.now();
   const prev=previousSessionFor(dayId, startTs);
   const exercises=day.exercises.map(ex=>{
     const p=exVariantPrev(dayId, ex.name, 'Standard', startTs);
-    const nSets=(p&&p.sets.length)?p.sets.length:3; const sets=[];
-    for(let i=0;i<nSets;i++){ const ps=p&&p.sets[i]; sets.push({weight: ps?String(ps.w):'', reps:(ps&&ps.r!=null)?String(ps.r):'', intensity:'', done:false}); }
-    return {name:ex.name, range:ex.range, rest:latestRest(dayId,ex.name), note:'', variant:'Standard', _touched:false, sets, prev:p||null, best:allTimeBestVariant(dayId,ex.name,'Standard')};
+    return {name:ex.name, range:ex.range, rest:latestRest(dayId,ex.name), note:'', variant:'Standard', _touched:false, sets:prefillSets(p, ex.sets), prev:p||null, best:allTimeBestVariant(dayId,ex.name,'Standard')};
   });
-  /* reprend les supersets de la dernière séance enregistrée de ce type */
+  /* supersets : ceux de la dernière séance enregistrée de ce type, sinon ceux du programme */
   const lastLog=STORE.sessions().filter(s=>s.dayId===dayId).sort((a,b)=>b.startTs-a.startTs)[0];
-  if(lastLog){ const gm={}; (lastLog.exercises||[]).forEach(e=>{ if(e.superset) gm[e.name]=e.superset; }); exercises.forEach(e=>{ if(gm[e.name]) e.superset=gm[e.name]; }); ssClean(exercises); }
-  const active={id:'s'+startTs, dayId, dayName:day.name, tag:day.tag, startTs, dateISO:todayISO(), home:false, prevTotalVol:prev?prev.totalVol:null, prevDateISO:prev?prev.dateISO:null, prevSource:prev?prev.source:null, exercises};
+  if(lastLog){ const gm={}; (lastLog.exercises||[]).forEach(e=>{ if(e.superset) gm[e.name]=e.superset; }); exercises.forEach(e=>{ if(gm[e.name]) e.superset=gm[e.name]; }); }
+  else day.exercises.forEach((ex,i)=>{ if(ex.superset) exercises[i].superset=ex.superset; });
+  ssClean(exercises);
+  const active={id:'s'+startTs, dayId, dayName:day.name, tag:day.tag, block:curBlock().id, startTs, dateISO:todayISO(), home:false, prevTotalVol:prev?prev.totalVol:null, prevDateISO:prev?prev.dateISO:null, prevSource:prev?prev.source:null, exercises};
   STORE.saveActive(active); renderTrain();
 }
 
@@ -960,9 +1087,9 @@ function renderStartScreen(){
     btns.append(b1,b2); rc.appendChild(btns); appRoot.appendChild(rc);
   }
 
-  appRoot.appendChild(el('div','sub-h','Nouvelle séance'));
+  const nh=el('div','sub-h sub-h-row'); nh.appendChild(el('span',null,'Nouvelle séance')); const bs=el('div','blocksel'); bs.setAttribute('role','group'); bs.setAttribute('aria-label','Bloc'); renderBlockSel(bs); nh.appendChild(bs); appRoot.appendChild(nh);
   const grid=el('div','day-grid');
-  DATA.days.forEach(d=>{
+  curDays().forEach(d=>{
     const card=el('button','day-card'); const last=lastDoneFor(d.id);
     const lastTxt=last? `Dernière fois · ${monShort(last.dateISO)}` : 'Jamais réalisée';
     card.innerHTML=`${d.tag?`<span class="dc-tag">${d.tag}</span>`:'<span class="dc-tag" style="opacity:.5">séance</span>'}<div class="dc-name">${d.name}</div><div class="dc-meta">${d.exercises.length} exos · ${lastTxt}</div><span class="dc-go">${svgGo}</span>`;
@@ -975,7 +1102,7 @@ function renderStartScreen(){
   if(!sessions.length){ const p=el('div'); p.style.cssText='color:var(--muted);font-size:13px;padding:2px 2px 10px'; p.textContent='Tes séances enregistrées ici apparaîtront dans cette liste et viendront enrichir tes courbes de progression dans l\'onglet Analyse.'; appRoot.appendChild(p); }
   sessions.forEach(s=>{
     const it=el('div','hist-item'); const dur=s.durationMin!=null?`${s.durationMin} min`:'—'; const nsets=(s.exercises||[]).reduce((a,e)=>a+(e.sets||[]).length,0);
-    const main=el('div','hi-main'); main.innerHTML=`<div class="hi-t">${s.dayName}${s.home?' <span style="font-size:12px">🏠</span>':''}</div><div class="hi-s">${monShort(s.dateISO)} · ${s.home?'maison · ':''}${dur} · ${nsets} séries</div>`;
+    const main=el('div','hi-main'); main.innerHTML=`<div class="hi-t">${s.dayName}${s.home?' <span style="font-size:12px">🏠</span>':''}</div><div class="hi-s">${blockById(blockOf(s)).name} · ${monShort(s.dateISO)} · ${s.home?'maison · ':''}${dur} · ${nsets} séries</div>`;
     const vol=el('div','hi-vol'); vol.innerHTML=`${fmtK(s.totalVol||0)}<small>lb volume</small>`;
     const del=el('button','icon-btn'); del.innerHTML=svgTrash; del.title='Supprimer'; del.setAttribute('aria-label','Supprimer la séance'); del.addEventListener('click',e=>{ e.stopPropagation(); if(confirm('Supprimer cette séance enregistrée ?')){ STORE.deleteSession(s.id); renderTrain(); } });
     const chev=el('span','hi-chev'); chev.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
@@ -1003,7 +1130,7 @@ function openSessionDetail(id){
     const exs=s.exercises||[]; const nsets=exs.reduce((a,e)=>a+(e.sets||[]).length,0);
     const d=new Date(s.dateISO+'T12:00:00'); const dateTxt=d.toLocaleDateString('fr-FR',{weekday:'long', day:'numeric', month:'long', year:'numeric'});
     const t0=s.startTs? new Date(s.startTs).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : null;
-    body.innerHTML=`<div class="m-sub" style="text-transform:none">${esc(dateTxt)}${t0?' · '+t0:''} · ${s.home?'🏠 Maison':'🏋️ Salle'}</div>
+    body.innerHTML=`<div class="m-sub" style="text-transform:none">${esc(dateTxt)}${t0?' · '+t0:''} · ${s.home?'🏠 Maison':'🏋️ Salle'} · ${blockById(blockOf(s)).name}</div>
       <div class="recap-grid">
         <div class="rc"><div class="l">Durée</div><div class="v">${s.durationMin!=null?fmtNum(s.durationMin):'—'}<small> min</small></div></div>
         <div class="rc"><div class="l">Volume</div><div class="v">${fmtK(s.totalVol||0)}<small> lb</small></div></div>
@@ -1142,7 +1269,8 @@ function buildExCard(active,ex,ei,ssLab){
   card.appendChild(buildVariantChips(active, ex, ei));
 
   const pl=el('div','prev-line'+(ex.prev?'':' none'));
-  if(ex.prev){ const setsTxt=ex.prev.sets.map(fmtPrevSet).join('  ·  '); pl.innerHTML=`<span class="pl-lab">La dernière fois${ex.variant!=='Standard'?' ('+esc(ex.variant)+')':''}&nbsp;:</span> <b>${setsTxt}</b>  <span style="color:var(--muted)">(max ${fmtNum(ex.prev.top)} lb)</span>`; }
+  if(ex.prev){ const setsTxt=ex.prev.sets.map(fmtPrevSet).join('  ·  '); const when=ex.prev.dateISO? ` · ${monShort(ex.prev.dateISO)}${ex.prev.block&&ex.prev.block!==(active.block||blockOf(active))?' · '+blockById(ex.prev.block).name:''}` : '';
+    pl.innerHTML=`<span class="pl-lab">La dernière fois${ex.variant!=='Standard'?' ('+esc(ex.variant)+')':''}${when}&nbsp;:</span> <b>${setsTxt}</b>  <span style="color:var(--muted)">(max ${fmtNum(ex.prev.top)} lb)</span>`; }
   else pl.textContent = ex.variant==='Standard' ? 'Pas d\'historique pour cet exercice — donne le ton.' : 'Première fois sur la variante « '+ex.variant+' » — donne le ton.';
   card.appendChild(pl);
 
@@ -1205,10 +1333,10 @@ function buildVariantChips(active, ex, ei){
 function selectVariant(active, ei, v){
   const ex=active.exercises[ei]; if(ex.variant===v){ return; }
   ex.variant=v; ex.prev=exVariantPrev(active.dayId, ex.name, v, active.startTs); ex.best=allTimeBestVariant(active.dayId, ex.name, v);
-  if(!ex._touched){ const p=ex.prev; const n=(p&&p.sets.length)?p.sets.length:ex.sets.length; const sets=[]; for(let i=0;i<n;i++){ const ps=p&&p.sets[i]; sets.push({weight:ps?String(ps.w):'', reps:(ps&&ps.r!=null)?String(ps.r):'', intensity:'', done:false}); } ex.sets=sets; }
+  if(!ex._touched){ const p=ex.prev; const dex=dataEx(active.dayId, ex.name); ex.sets=prefillSets(p, (dex&&dex.sets)||((p&&p.sets.length)?null:ex.sets.length)); }
   persist(active); rebuildActive(active);
 }
-function addVariant(exName, name){ const s=vStore(); s.added=s.added||{}; const list=(s.added[exName]||[]).slice(); if(list.indexOf(name)<0) list.push(name); s.added[exName]=list; vSave(s); }
+function addVariant(exName, name){ const s=vStore(); const k=exKey(exName); s.added=s.added||{}; const list=(s.added[k]||[]).slice(); if(list.indexOf(name)<0) list.push(name); s.added[k]=list; vSave(s); }
 function promptAddVariant(active, ei){
   const ex=active.exercises[ei];
   const body=el('div'); body.innerHTML='<div class="m-sub">Nom de la nouvelle variante pour «&nbsp;'+esc(ex.name)+'&nbsp;».</div>';
@@ -1219,15 +1347,15 @@ function promptAddVariant(active, ei){
   ok.addEventListener('click',go); inp.addEventListener('keydown',e=>{ if(e.key==='Enter') go(); });
 }
 function renameVariant(exName, from, to){
-  const s=vStore(); s.renames=s.renames||{}; s.renames[exName]=s.renames[exName]||{};
+  exName=exKey(exName); const s=vStore(); s.renames=s.renames||{}; s.renames[exName]=s.renames[exName]||{};
   Object.keys(s.renames[exName]).forEach(k=>{ if(s.renames[exName][k]===from) s.renames[exName][k]=to; });
   s.renames[exName][from]=to;
   s.added=s.added||{}; if(s.added[exName]) s.added[exName]=s.added[exName].map(x=>x===from?to:x);
   vSave(s);
-  const ss=STORE.sessions(); let ch=false; ss.forEach(sess=>{ (sess.exercises||[]).forEach(e=>{ if(e.name===exName && (e.variant||'Standard')===from){ e.variant=to; ch=true; } }); }); if(ch) STORE.saveSessions(ss);
+  const ss=STORE.sessions(); let ch=false; ss.forEach(sess=>{ (sess.exercises||[]).forEach(e=>{ if(exKey(e.name)===exName && (e.variant||'Standard')===from){ e.variant=to; ch=true; } }); }); if(ch) STORE.saveSessions(ss);
 }
 function deleteVariant(day, ex, v){
-  const used = (ex.weeks||[]).some(w=>w.done && resolveVariant(ex.name,w.variant)===v) || loggedSessionsFor(day.id).some(s=>{ const e=s.exMap[ex.name]; return e && resolveVariant(ex.name,e.variant)===v; });
+  const used = dataVariantsFor(day, ex).indexOf(v)>=0;
   if(used) return {ok:false, msg:'Variante utilisée par des données — impossible de la supprimer'};
   const s=vStore(); if(s.added && s.added[ex.name]){ s.added[ex.name]=s.added[ex.name].filter(x=>x!==v); vSave(s); }
   return {ok:true};
@@ -1332,7 +1460,7 @@ function openRecap(active){
       <div class="rc"><div class="l">Séries validées</div><div class="v">${sd.d}<small> / ${sd.tot}</small></div></div>
       <div class="rc"><div class="l">Exos ≥ dernière</div><div class="v">${beaten}<small> / ${active.exercises.length}</small></div></div>
     </div>`;
-  if(prs.length){ const h=el('div','sub-h','Nouveaux records du bloc'); h.style.margin='18px 0 0'; m.appendChild(h); const pl=el('div','pr-list'); prs.forEach(p=>{ const x=el('div','pr'); x.innerHTML=`🏆 <span>${p.name}</span><span class="w">${fmtNum(p.w)} lb</span>`; pl.appendChild(x); }); m.appendChild(pl); }
+  if(prs.length){ const h=el('div','sub-h','Nouveaux records'); h.style.margin='18px 0 0'; m.appendChild(h); const pl=el('div','pr-list'); prs.forEach(p=>{ const x=el('div','pr'); x.innerHTML=`🏆 <span>${p.name}</span><span class="w">${fmtNum(p.w)} lb</span>`; pl.appendChild(x); }); m.appendChild(pl); }
   const btns=el('div','modal-btns');
   const save=el('button','btn-primary');
   if(sd.d>0){ save.innerHTML=svgCheck+' Enregistrer'; save.addEventListener('click',()=>{ saveActiveSession(active,vol,durMin); document.body.removeChild(bg); }); }
@@ -1343,13 +1471,14 @@ function openRecap(active){
   document.body.appendChild(bg);
 }
 function saveActiveSession(active,vol,durMin){
-  const session={ id:active.id, dayId:active.dayId, dayName:active.dayName, tag:active.tag, startTs:active.startTs, endTs:Date.now(), durationMin:durMin, dateISO:active.dateISO, home:!!active.home, totalVol:Math.round(vol),
+  const session={ id:active.id, block:active.block||blockOf(active), dayId:active.dayId, dayName:active.dayName, tag:active.tag, startTs:active.startTs, endTs:Date.now(), durationMin:durMin, dateISO:active.dateISO, home:!!active.home, totalVol:Math.round(vol),
     exercises: active.exercises.map(ex=>({ name:ex.name, range:ex.range, variant:ex.variant||'Standard', superset:ex.superset||null, rest:(ex.rest!=null&&String(ex.rest).trim()!=='')?String(ex.rest).trim():null, note:(ex.note!=null&&String(ex.note).trim()!=='')?String(ex.note).trim():null, sets: ex.sets.filter(s=>s.done && pnum(s.weight)!=null).map(s=>{ const iv=pnum(s.intensity); return {w:pnum(s.weight), r:pnum(s.reps), i:(iv!=null)?Math.max(0,Math.min(10,iv)):null}; }) })).filter(e=>e.sets.length) };
   ssClean(session.exercises); session.exercises.forEach(e=>{ if(!e.superset) e.superset=null; });
   if(session.exercises.length) STORE.addSession(session); STORE.clearActive(); renderTrain(); renderAnalyse();
 }
 
 /* ---------- view switch ---------- */
+function renderAll(){ renderAnalyse(); if(document.body.dataset.view==='train') renderTrain(); }
 function setView(v){
   document.body.dataset.view=v;
   $('#vAnalyse').setAttribute('aria-selected', v==='analyse'?'true':'false');
