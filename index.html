@@ -546,22 +546,23 @@ const STORE={
    Les blocs suivants n'ont que des séances enregistrées ici. Les hauts du corps (Upper 1/2)
    sont communs à tous les blocs : une séance appartient au bloc choisi au lancement
    (champ `block`), ou à défaut au bloc couvrant sa date. */
-const planDay=(id,name,tag,exs)=>({id, name, tag, weekMeta:[], exercises:exs.map(e=>({name:e[0], range:e[1], sets:e[2], superset:e[3]||null, weeks:[]}))});
+/* exercice du programme : [nom, fourchette, séries, superset, variante proposée par défaut] */
+const planDay=(id,name,tag,exs)=>({id, name, tag, weekMeta:[], exercises:exs.map(e=>({name:e[0], range:e[1], sets:e[2], superset:e[3]||null, variant:e[4]||null, weeks:[]}))});
 DATA.days.push(
   planDay('b5f1','Fessiers 1','Pro',[
     ['KAS hip thrust','8-10 reps',3,'kas'],
     ['Hip thrust (max reps)','max reps',3,'kas'],
     ['Split squat fessiers','8-10 reps',2],
     ['Hip rotation moyen fessiers','8-10 reps',2],
-    ['RDL barre guidée','8-10 reps',3],
-    ['Leg curl allongée','10-12 reps',3],
+    ['RDL','8-10 reps',3,null,'Barre guidée'],
+    ['Leg curl','10-12 reps',3,null,'Allongée'],
   ]),
   planDay('b5f2','Fessiers 2','Pro',[
     ['Abductor glutes max','15-20 reps',4],
-    ['RDL squat belt','10-12 reps',3],
+    ['RDL','10-12 reps',3,null,'Squat belt'],
     ['Extension ischios-fessiers','10-12 reps',3],
-    ['Leg press unilatérale fessiers','10-12 reps',2],
-    ['SLDL supporté unilatéral','12-15 reps',3],
+    ['Leg press','10-12 reps',2,null,'Unilatérale'],
+    ['SLDL','12-15 reps',3,null,'Supporté unilatéral'],
   ]),
 );
 const BLOCKS=[
@@ -578,8 +579,25 @@ function blockOf(s){
   for(let i=BLOCKS.length-1;i>=0;i--){ const b=BLOCKS[i]; if(b.days.indexOf(s.dayId)>=0 && (!b.start || (s.dateISO||'')>=b.start)) return b.id; }
   return BLOCKS[0].id;
 }
+/* Noms = exercice de base, la précision va dans la variante (cohérence du suivi).
+   Ancien nom → [nom, variante qui remplace « Standard »]. Appliqué aux données Excel,
+   aux séances enregistrées et à la séance en cours. */
+const EX_RENAME={
+  'Leg press unilatérale fessiers':['Leg press','Unilatérale'],
+  'RDL barre guidée':['RDL','Barre guidée'],
+  'RDL squat belt':['RDL','Squat belt'],
+  'SLDL supporté unilatéral':['SLDL','Supporté unilatéral'],
+  'Leg curl allongée':['Leg curl','Allongée'],
+  'Leg curl allongée (4 sets x 10-12)':['Leg curl','Allongée'],
+};
+function migrateEx(e, vf){ const r=EX_RENAME[e.name]; if(!r) return false; e.name=r[0]; vf=vf||'variant'; if(!e[vf]||e[vf]==='Standard') e[vf]=r[1]; return true; }
+DATA.days.forEach(d=>d.exercises.forEach(ex=>{ const r=EX_RENAME[ex.name]; if(!r) return; ex.name=r[0]; ex.weeks.forEach(w=>{ if(!w.variant||w.variant==='Standard') w.variant=r[1]; }); }));
+(function migrateStored(){
+  const a=STORE.sessions(); let ch=false; a.forEach(s=>(s.exercises||[]).forEach(e=>{ if(migrateEx(e)) ch=true; })); if(ch) STORE.saveSessions(a);
+  const act=STORE.active(); if(act && act.exercises.some(e=>migrateEx(e))) STORE.saveActive(act);
+})();
 /* même exercice sous un autre nom selon le bloc → historique commun */
-const EX_ALIAS={'A1 - KAS hip thrust':'KAS hip thrust', 'Leg curl allongée (4 sets x 10-12)':'Leg curl allongée'};
+const EX_ALIAS={'A1 - KAS hip thrust':'KAS hip thrust'}; Object.keys(EX_RENAME).forEach(k=>EX_ALIAS[k]=EX_RENAME[k][0]);
 const exKey = n => EX_ALIAS[n]||n;
 
 /* ---------- séances du début du bloc 5 saisies hors de l'app ----------
@@ -589,25 +607,25 @@ const seedEx=(name,variant,rest,sets,o)=>Object.assign({name, variant, rest, not
 const SEED_B5=[
   {dayId:'b5f2', date:'2026-09-30', min:67, home:false, ex:[
     seedEx('Abductor glutes max','Standard','0:15',[[155,15,9],[155,15,9],[150,15,9],[150,15,9]]),
-    seedEx('RDL squat belt','Standard','2',[[90,12,7],[115,10,8],[115,10,8]]),
+    seedEx('RDL','Squat belt','2',[[90,12,7],[115,10,8],[115,10,8]]),
     seedEx('Extension ischios-fessiers','Standard','2',[[60,10,9],[60,10,9],[60,10,9]]),
-    seedEx('Leg press unilatérale fessiers','Standard','1:30',[[45,10],[45,10,8]],{note:'Warmup 0 lb × 8'}),
-    seedEx('SLDL supporté unilatéral','Leg curl assise',null,[[50,12,5],[70,12,8],[70,12,8]]),
+    seedEx('Leg press','Unilatérale','1:30',[[45,10],[45,10,8]],{note:'Warmup 0 lb × 8'}),
+    seedEx('SLDL','Leg curl assise',null,[[50,12,5],[70,12,8],[70,12,8]]),
   ]},
   {dayId:'b5f1', date:'2026-10-05', min:72, home:true, ex:[
     seedEx('KAS hip thrust','Smith','2',[[70,8],[120,8],[120,8]],{superset:'kas'}),
     seedEx('Hip thrust (max reps)','Smith','2',[[70,13],[120,7],[120,8]],{superset:'kas'}),
     seedEx('Split squat fessiers','Standard',null,[[40,10,7],[40,12,9]]),
     seedEx('Hip rotation moyen fessiers','Smith',null,[[0,10],[0,10]],{note:'Mouvement très difficile'}),
-    seedEx('RDL barre guidée','Standard',null,[[50,10],[70,8],[70,8,9]],{note:'Sans sangles'}),
-    seedEx('Leg curl allongée','SLDL DB',null,[[10,10,4],[10,10,4],[10,10,4]]),
+    seedEx('RDL','Barre guidée',null,[[50,10],[70,8],[70,8,9]],{note:'Sans sangles'}),
+    seedEx('Leg curl','SLDL DB',null,[[10,10,4],[10,10,4],[10,10,4]]),
   ]},
   {dayId:'b5f2', date:'2026-10-11', min:62, home:false, ex:[
     seedEx('Abductor glutes max','Standard','0:15',[[150,20,9],[150,15,9],[150,15,9],[150,15,9]]),
-    seedEx('RDL squat belt','Standard','2',[[115,10,8],[115,10,8],[115,10,8]]),
+    seedEx('RDL','Squat belt','2',[[115,10,8],[115,10,8],[115,10,8]]),
     seedEx('Extension ischios-fessiers','Glute ham raise','2',[[25,6],[0,10],[0,10,8]],{note:'S1 : 25 lb × 6 puis 5 reps à 0 lb — tirage sévère sur l\'arrière de la jambe !'}),
-    seedEx('Leg press unilatérale fessiers','Standard','1:30',[[45,10],[45,10,8]],{note:'Warmup 0 lb × 8'}),
-    seedEx('SLDL supporté unilatéral','Leg extension',null,[[45,13,8],[45,13,8],[50,12,9]]),
+    seedEx('Leg press','Unilatérale','1:30',[[45,10],[45,10,8]],{note:'Warmup 0 lb × 8'}),
+    seedEx('SLDL','Leg extension',null,[[45,13,8],[45,13,8],[50,12,9]]),
   ]},
   {dayId:'upper2', date:'2026-10-13', min:51, home:true, ex:[
     seedEx('Shoulder press','Smith','2',[[20,8,8],[20,9,8],[20,8,9]]),
@@ -1055,8 +1073,8 @@ function startSession(dayId){
   const day=DATA.days.find(d=>d.id===dayId); const startTs=Date.now();
   const prev=previousSessionFor(dayId, startTs);
   const exercises=day.exercises.map(ex=>{
-    const p=exVariantPrev(dayId, ex.name, 'Standard', startTs);
-    return {name:ex.name, range:ex.range, rest:latestRest(dayId,ex.name), note:'', variant:'Standard', _touched:false, sets:prefillSets(p, ex.sets), prev:p||null, best:allTimeBestVariant(dayId,ex.name,'Standard')};
+    const v0=ex.variant||'Standard'; const p=exVariantPrev(dayId, ex.name, v0, startTs);
+    return {name:ex.name, range:ex.range, rest:latestRest(dayId,ex.name), note:'', variant:v0, _touched:false, sets:prefillSets(p, ex.sets), prev:p||null, best:allTimeBestVariant(dayId,ex.name,v0)};
   });
   /* supersets : ceux de la dernière séance enregistrée de ce type, sinon ceux du programme */
   const lastLog=STORE.sessions().filter(s=>s.dayId===dayId).sort((a,b)=>b.startTs-a.startTs)[0];
