@@ -1084,8 +1084,9 @@ function refreshRefs(active, ex){
 function refreshSessionRefs(active){
   const prev=previousSessionFor(active.dayId, active.startTs, !!active.home);
   active.prevTotalVol=prev?prev.totalVol:null; active.prevDateISO=prev?prev.dateISO:null; active.prevSource=prev?prev.source:null;
-  active.exercises.forEach(ex=>refreshRefs(active, ex));
+  active.exercises.forEach(ex=>{ if(ex.drafts) Object.keys(ex.drafts).forEach(k=>{ if(!ex.drafts[k].touched) delete ex.drafts[k]; }); refreshRefs(active, ex); });
 }
+function draftDone(ex, v){ const d=ex.drafts&&ex.drafts[v]; return !!(d && d.sets.some(s=>s.done)); }
 function startSession(dayId){
   const day=DATA.days.find(d=>d.id===dayId); const startTs=Date.now();
   const exercises=day.exercises.map(ex=>({name:ex.name, range:ex.range, rest:latestRest(dayId,ex.name), note:'', variant:ex.variant||'Standard', _touched:false, sets:[]}));
@@ -1358,14 +1359,22 @@ function buildVariantChips(active, ex, ei){
   const wrap=el('div','var-row'); wrap.appendChild(el('span','var-lab','Variante'));
   const list=dex? distinctVariantsFor(day, dex) : ['Standard'].concat(addedVariants(ex.name));
   if(list.indexOf(ex.variant)<0) list.push(ex.variant);
-  list.forEach(v=>{ const chip=el('button','vchip'+(v===ex.variant?' on':'')); chip.type='button'; chip.textContent=v; chip.addEventListener('click',()=>selectVariant(active,ei,v)); wrap.appendChild(chip); });
+  list.forEach(v=>{ const chip=el('button','vchip'+(v===ex.variant?' on':'')); chip.type='button'; chip.textContent=v+(v!==ex.variant&&draftDone(ex,v)?' •':''); if(v!==ex.variant&&draftDone(ex,v)) chip.title='Séries validées sur cette variante (non enregistrées tant qu\'elle n\'est pas sélectionnée)'; chip.addEventListener('click',()=>selectVariant(active,ei,v)); wrap.appendChild(chip); });
   const add=el('button','vchip vadd'); add.type='button'; add.textContent='+'; add.title='Ajouter une variante'; add.setAttribute('aria-label','Ajouter une variante pour '+ex.name); add.addEventListener('click',()=>promptAddVariant(active,ei)); wrap.appendChild(add);
   if(list.some(v=>v!=='Standard')){ const mng=el('button','vchip vmng'); mng.type='button'; mng.textContent='✎'; mng.title='Renommer / supprimer'; mng.setAttribute('aria-label','Gérer les variantes de '+ex.name); mng.addEventListener('click',()=>openVariantManager(active,ei)); wrap.appendChild(mng); }
   return wrap;
 }
+/* chaque variante garde ses propres séries pendant la séance (brouillons) :
+   changer de variante range les séries en cours et ressort celles de la nouvelle
+   (ou les pré-remplit avec la dernière perf de cette variante). Seule la variante
+   sélectionnée à la fin est enregistrée. */
 function selectVariant(active, ei, v){
   const ex=active.exercises[ei]; if(ex.variant===v){ return; }
-  ex.variant=v; refreshRefs(active, ex);
+  ex.drafts=ex.drafts||{}; ex.drafts[ex.variant]={sets:ex.sets, touched:!!ex._touched};
+  const d=ex.drafts[v]; delete ex.drafts[v];
+  ex.variant=v;
+  if(d && d.touched){ ex.sets=d.sets; ex._touched=true; } else { ex._touched=false; }
+  refreshRefs(active, ex);
   persist(active); rebuildActive(active);
 }
 function addVariant(exName, name){ const s=vStore(); const k=exKey(exName); s.added=s.added||{}; const list=(s.added[k]||[]).slice(); if(list.indexOf(name)<0) list.push(name); s.added[k]=list; vSave(s); }
@@ -1400,7 +1409,7 @@ function openVariantManager(active, ei){
   all.forEach(v=>{
     const row=el('div'); row.style.cssText='display:flex;gap:8px;align-items:center';
     const inp=document.createElement('input'); inp.type='text'; inp.value=v; inp.className='rest-input'; inp.style.cssText='flex:1;min-width:0;height:38px;text-align:left;padding:0 10px';
-    const save=el('button','chip-btn'); save.textContent='Renommer'; save.addEventListener('click',()=>{ const nn=(inp.value||'').trim(); if(!nn||nn===v){ sheet.close(); return; } if(nn.toLowerCase()==='standard'){ toast('Nom réservé'); return; } renameVariant(ex.name, v, nn); if(ex.variant===v) ex.variant=nn; persist(active); toast('Variante renommée'); sheet.close(); rebuildActive(active); });
+    const save=el('button','chip-btn'); save.textContent='Renommer'; save.addEventListener('click',()=>{ const nn=(inp.value||'').trim(); if(!nn||nn===v){ sheet.close(); return; } if(nn.toLowerCase()==='standard'){ toast('Nom réservé'); return; } renameVariant(ex.name, v, nn); if(ex.variant===v) ex.variant=nn; if(ex.drafts&&ex.drafts[v]){ ex.drafts[nn]=ex.drafts[v]; delete ex.drafts[v]; } persist(active); toast('Variante renommée'); sheet.close(); rebuildActive(active); });
     const del=el('button','icon-btn'); del.innerHTML=svgTrash; del.title='Supprimer'; del.setAttribute('aria-label','Supprimer '+v); del.addEventListener('click',()=>{ const r=deleteVariant(day, dex||{name:ex.name,weeks:[]}, v); if(r.ok){ if(ex.variant===v){ ex.variant='Standard'; persist(active); } toast('Variante supprimée'); sheet.close(); rebuildActive(active); } else toast(r.msg,'err'); });
     row.append(inp,save,del); listWrap.appendChild(row);
   });
@@ -1493,6 +1502,8 @@ function openRecap(active){
       <div class="rc"><div class="l">Exos ≥ dernière</div><div class="v">${beaten}<small> / ${active.exercises.length}</small></div></div>
     </div>`;
   if(prs.length){ const h=el('div','sub-h','Nouveaux records'); h.style.margin='18px 0 0'; m.appendChild(h); const pl=el('div','pr-list'); prs.forEach(p=>{ const x=el('div','pr'); x.innerHTML=`🏆 <span>${p.name}</span><span class="w">${fmtNum(p.w)} lb</span>`; pl.appendChild(x); }); m.appendChild(pl); }
+  const lost=[]; active.exercises.forEach(ex=>Object.keys(ex.drafts||{}).forEach(v=>{ if(draftDone(ex,v)) lost.push(`${esc(ex.name)} · ${esc(v)}`); }));
+  if(lost.length){ const w=el('div','sd-note'); w.style.marginTop='14px'; w.innerHTML=`⚠️ Séries validées sur une variante qui n'est plus sélectionnée — <b>elles ne seront pas enregistrées</b>&nbsp;: ${lost.join(', ')}. Continue la séance et resélectionne la variante pour les garder.`; m.appendChild(w); }
   const btns=el('div','modal-btns');
   const save=el('button','btn-primary');
   if(sd.d>0){ save.innerHTML=svgCheck+' Enregistrer'; save.addEventListener('click',()=>{ saveActiveSession(active,vol,durMin); document.body.removeChild(bg); }); }
