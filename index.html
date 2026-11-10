@@ -304,15 +304,16 @@
   .prev-line b{color:var(--ink);}
   .prev-line.none{color:var(--muted);}
 
-  .setrow{display:grid; grid-template-columns:22px 1fr 1fr 44px; align-items:center; gap:9px; margin-top:10px;}
+  .setrow{display:grid; grid-template-columns:20px 1fr 1fr 44px; align-items:center; gap:8px; margin-top:10px;}
   .setrow .sn{font-family:var(--font-mono); font-size:12px; color:var(--muted); font-weight:700; text-align:center;}
   .stepper{display:flex; align-items:center; background:var(--surface-2); border:1px solid var(--hair); border-radius:11px; overflow:hidden; height:46px;}
-  .stepper button{appearance:none; cursor:pointer; border:none; background:transparent; color:var(--ink-2); width:38px; height:100%; font-size:20px; font-weight:600; flex:none; display:grid; place-items:center;}
+  .stepper button{appearance:none; cursor:pointer; border:none; background:transparent; color:var(--ink-2); width:32px; height:100%; font-size:20px; font-weight:600; flex:none; display:grid; place-items:center;}
   .stepper button:hover{color:var(--accent);}
   .stepper input{border:none; background:transparent; width:100%; min-width:0; text-align:center; font-family:var(--font-mono); font-weight:800; font-size:16px; color:var(--ink); padding:0; -moz-appearance:textfield;}
   .stepper input::-webkit-outer-spin-button,.stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
   .stepper input:focus{outline:none;}
-  .stepper .unit{font-family:var(--font-mono); font-size:10px; color:var(--muted); font-weight:700; padding-right:9px;}
+  .stepper .sv{flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1; gap:2px;}
+  .stepper .unit{font-family:var(--font-mono); font-size:9px; color:var(--muted); font-weight:700; letter-spacing:.04em;}
   .setrow .field-lab{grid-column:2 / 4; display:none;}
   .chk{appearance:none; cursor:pointer; width:44px; height:46px; border-radius:12px; border:1.5px solid var(--hair); background:var(--surface-2); color:var(--muted); display:grid; place-items:center; transition:.14s;}
   .chk svg{width:20px;height:20px;}
@@ -672,8 +673,11 @@ function loggedSessionsFor(dayId, blockId){ return STORE.sessions().filter(s=>s.
 function allSessionsFor(dayId, blockId){ const xl=(!blockId||blockById(blockId).excel)? excelSessionsFor(dayId) : []; return xl.concat(loggedSessionsFor(dayId, blockId)).sort((a,b)=>a.ts-b.ts); }
 /* toutes les séances, tous types et tous blocs confondus (historique par exercice) */
 function allSessionsAny(){ const xl=[]; DATA.days.forEach(d=>xl.push(...excelSessionsFor(d.id))); return xl.concat(STORE.sessions().map(logToHist)).sort((a,b)=>a.ts-b.ts); }
-function previousSessionFor(dayId, beforeTs){
-  const c=allSessionsFor(dayId).filter(s=>s.ts<beforeTs);
+/* `home` (booléen, facultatif) : ne garde que les séances du même lieu — les charges
+   ne sont pas comparables entre le matériel de la salle et celui de la maison */
+const sameLoc=(s,home)=> home==null || !!s.home===!!home;
+function previousSessionFor(dayId, beforeTs, home){
+  const c=allSessionsFor(dayId).filter(s=>s.ts<beforeTs && sameLoc(s,home));
   return c.length? c[c.length-1] : null;
 }
 function latestRest(dayId, exName){
@@ -712,14 +716,14 @@ function defaultVariant(day, ex, sessions){
   (sessions||allSessionsAny()).forEach(s=>{ const e=s.exMap[k]; if(e) lv=resolveVariant(ex.name, e.variant); });
   return lv;
 }
-function exVariantPrev(dayId, exName, variant, beforeTs){
+function exVariantPrev(dayId, exName, variant, beforeTs, home){
   const k=exKey(exName);
-  const c=allSessionsAny().filter(s=>{ const e=s.exMap[k]; return e && s.ts<beforeTs && resolveVariant(exName, e.variant)===variant; });
+  const c=allSessionsAny().filter(s=>{ const e=s.exMap[k]; return e && s.ts<beforeTs && sameLoc(s,home) && resolveVariant(exName, e.variant)===variant; });
   if(!c.length) return null; const s=c[c.length-1]; const e=s.exMap[k];
-  return {sets:e.sets, top:e.top, vol:e.vol, dateISO:s.dateISO, source:s.source, block:s.block};
+  return {sets:e.sets, top:e.top, vol:e.vol, dateISO:s.dateISO, source:s.source, block:s.block, home:!!s.home};
 }
-function allTimeBestVariant(dayId, exName, variant){
-  const k=exKey(exName); let best=null; allSessionsAny().forEach(s=>{ const e=s.exMap[k]; if(e && resolveVariant(exName,e.variant)===variant && e.top!=null && (best==null||e.top>best)) best=e.top; }); return best;
+function allTimeBestVariant(dayId, exName, variant, home){
+  const k=exKey(exName); let best=null; allSessionsAny().forEach(s=>{ const e=s.exMap[k]; if(e && sameLoc(s,home) && resolveVariant(exName,e.variant)===variant && e.top!=null && (best==null||e.top>best)) best=e.top; }); return best;
 }
 
 /* ---------- supersets ----------
@@ -1063,25 +1067,35 @@ const svgCheck='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strok
 const svgGo='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
 const svgTrash='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2M6 7l1 13h10l1-13"/></svg>';
 
-/* séries pré-remplies avec la dernière perf ; nombre de séries = programme, sinon dernière fois, sinon 3 */
+/* séries pré-remplies avec la dernière perf (charge, reps, RPE) ; nombre de séries = programme, sinon dernière fois, sinon 3 */
 function prefillSets(p, planSets){
   const n=planSets || ((p&&p.sets.length)?p.sets.length:3); const sets=[];
-  for(let i=0;i<n;i++){ const ps=p&&p.sets.length? p.sets[Math.min(i,p.sets.length-1)] : null; sets.push({weight: ps?String(ps.w):'', reps:(ps&&ps.r!=null)?String(ps.r):'', intensity:'', done:false}); }
+  for(let i=0;i<n;i++){ const ps=p&&p.sets.length? p.sets[Math.min(i,p.sets.length-1)] : null; sets.push({weight: ps?String(ps.w):'', reps:(ps&&ps.r!=null)?String(ps.r):'', intensity:(ps&&ps.i!=null)?String(ps.i):'', done:false}); }
   return sets;
+}
+/* références d'un exercice pour la variante et le lieu de la séance ; re-remplit les séries tant qu'elles n'ont pas été touchées */
+function refreshRefs(active, ex){
+  const home=!!active.home;
+  ex.prev=exVariantPrev(active.dayId, ex.name, ex.variant, active.startTs, home);
+  ex.prevOther=ex.prev? null : exVariantPrev(active.dayId, ex.name, ex.variant, active.startTs, !home);
+  ex.best=allTimeBestVariant(active.dayId, ex.name, ex.variant, home);
+  if(!ex._touched){ const dex=dataEx(active.dayId, ex.name); ex.sets=prefillSets(ex.prev, (dex&&dex.sets)||((ex.prev&&ex.prev.sets.length)?null:ex.sets.length)); }
+}
+function refreshSessionRefs(active){
+  const prev=previousSessionFor(active.dayId, active.startTs, !!active.home);
+  active.prevTotalVol=prev?prev.totalVol:null; active.prevDateISO=prev?prev.dateISO:null; active.prevSource=prev?prev.source:null;
+  active.exercises.forEach(ex=>refreshRefs(active, ex));
 }
 function startSession(dayId){
   const day=DATA.days.find(d=>d.id===dayId); const startTs=Date.now();
-  const prev=previousSessionFor(dayId, startTs);
-  const exercises=day.exercises.map(ex=>{
-    const v0=ex.variant||'Standard'; const p=exVariantPrev(dayId, ex.name, v0, startTs);
-    return {name:ex.name, range:ex.range, rest:latestRest(dayId,ex.name), note:'', variant:v0, _touched:false, sets:prefillSets(p, ex.sets), prev:p||null, best:allTimeBestVariant(dayId,ex.name,v0)};
-  });
+  const exercises=day.exercises.map(ex=>({name:ex.name, range:ex.range, rest:latestRest(dayId,ex.name), note:'', variant:ex.variant||'Standard', _touched:false, sets:[]}));
   /* supersets : ceux de la dernière séance enregistrée de ce type, sinon ceux du programme */
   const lastLog=STORE.sessions().filter(s=>s.dayId===dayId).sort((a,b)=>b.startTs-a.startTs)[0];
   if(lastLog){ const gm={}; (lastLog.exercises||[]).forEach(e=>{ if(e.superset) gm[e.name]=e.superset; }); exercises.forEach(e=>{ if(gm[e.name]) e.superset=gm[e.name]; }); }
   else day.exercises.forEach((ex,i)=>{ if(ex.superset) exercises[i].superset=ex.superset; });
   ssClean(exercises);
-  const active={id:'s'+startTs, dayId, dayName:day.name, tag:day.tag, block:curBlock().id, startTs, dateISO:todayISO(), home:false, prevTotalVol:prev?prev.totalVol:null, prevDateISO:prev?prev.dateISO:null, prevSource:prev?prev.source:null, exercises};
+  const active={id:'s'+startTs, dayId, dayName:day.name, tag:day.tag, block:curBlock().id, startTs, dateISO:todayISO(), home:false, exercises};
+  refreshSessionRefs(active);
   STORE.saveActive(active); renderTrain();
 }
 
@@ -1246,11 +1260,11 @@ function renderActiveSession(active){
   bin.append(back,nm,tm,fin); bar.appendChild(bin); appRoot.appendChild(bar);
 
   const intro=el('div'); intro.style.cssText='margin:16px 2px 2px;color:var(--ink-2);font-size:13px';
-  intro.innerHTML= (active.prevTotalVol!=null ? `Référence&nbsp;: ta séance du <b style="color:var(--ink)">${monShort(active.prevDateISO)}</b> (${active.prevSource==='excel'?'plan/bloc':'enregistrée'}).` : `Première séance de référence — chaque série validée servira de base la prochaine fois.`) + ` Coche chaque série, note l'intensité (RPE 0–10) et ton temps de repos.`;
+  intro.innerHTML= (active.prevTotalVol!=null ? `Référence&nbsp;: ta séance ${active.home?'à la maison':'à la salle'} du <b style="color:var(--ink)">${monShort(active.prevDateISO)}</b> (${active.prevSource==='excel'?'plan/bloc':'enregistrée'}).` : `Première séance de référence — chaque série validée servira de base la prochaine fois.`) + ` Coche chaque série, note l'intensité (RPE 0–10) et ton temps de repos.`;
   appRoot.appendChild(intro);
 
   const loc=el('div','var-row'); loc.style.marginTop='14px'; loc.appendChild(el('span','var-lab','Lieu'));
-  [['🏋️ Salle',false],['🏠 Maison',true]].forEach(function(pair){ const b=el('button','vchip'+((!!active.home===pair[1])?' on':'')); b.type='button'; b.textContent=pair[0]; b.setAttribute('aria-pressed', (!!active.home===pair[1])?'true':'false'); b.addEventListener('click',()=>{ active.home=pair[1]; persist(active); rebuildActive(active); }); loc.appendChild(b); });
+  [['🏋️ Salle',false],['🏠 Maison',true]].forEach(function(pair){ const b=el('button','vchip'+((!!active.home===pair[1])?' on':'')); b.type='button'; b.textContent=pair[0]; b.setAttribute('aria-pressed', (!!active.home===pair[1])?'true':'false'); b.addEventListener('click',()=>{ if(!!active.home===pair[1]) return; active.home=pair[1]; refreshSessionRefs(active); persist(active); rebuildActive(active); }); loc.appendChild(b); });
   appRoot.appendChild(loc);
 
   TR={cards:[], bottom:null};
@@ -1288,7 +1302,8 @@ function buildExCard(active,ex,ei,ssLab){
 
   const pl=el('div','prev-line'+(ex.prev?'':' none'));
   if(ex.prev){ const setsTxt=ex.prev.sets.map(fmtPrevSet).join('  ·  '); const when=ex.prev.dateISO? ` · ${monShort(ex.prev.dateISO)}${ex.prev.block&&ex.prev.block!==(active.block||blockOf(active))?' · '+blockById(ex.prev.block).name:''}` : '';
-    pl.innerHTML=`<span class="pl-lab">La dernière fois${ex.variant!=='Standard'?' ('+esc(ex.variant)+')':''}${when}&nbsp;:</span> <b>${setsTxt}</b>  <span style="color:var(--muted)">(max ${fmtNum(ex.prev.top)} lb)</span>`; }
+    pl.innerHTML=`<span class="pl-lab">La dernière fois ${active.home?'à la maison':'à la salle'}${ex.variant!=='Standard'?' ('+esc(ex.variant)+')':''}${when}&nbsp;:</span> <b>${setsTxt}</b>  <span style="color:var(--muted)">(max ${fmtNum(ex.prev.top)} lb)</span>`; }
+  else if(ex.prevOther){ const o=ex.prevOther; pl.innerHTML=`Jamais fait ${active.home?'à la maison':'à la salle'}${ex.variant!=='Standard'?' en '+esc(ex.variant):''} — donne le ton.<br><span class="pl-lab">Pour info, ${o.home?'à la maison':'à la salle'} · ${monShort(o.dateISO)}&nbsp;:</span> ${o.sets.map(fmtPrevSet).join('  ·  ')}`; }
   else pl.textContent = ex.variant==='Standard' ? 'Pas d\'historique pour cet exercice — donne le ton.' : 'Première fois sur la variante « '+ex.variant+' » — donne le ton.';
   card.appendChild(pl);
 
@@ -1301,7 +1316,7 @@ function buildExCard(active,ex,ei,ssLab){
 
   const noteRow=el('div','ex-note');
   const nl=el('div','nl'); nl.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Notes</span>'; noteRow.appendChild(nl);
-  const na=document.createElement('textarea'); na.className='note-input'; na.rows=1; na.value=ex.note||''; na.placeholder='ex : ressenti, douleur, réglage machine, remarque…'; na.setAttribute('aria-label','notes pour '+ex.name);
+  const na=document.createElement('textarea'); na.className='note-input'; na.rows=1; na.value=ex.note||''; na.placeholder='ressenti, douleur, réglage machine…'; na.setAttribute('aria-label','notes pour '+ex.name);
   na.addEventListener('input',()=>{ ex.note=na.value; autoGrow(na); scheduleLive(active); });
   na.addEventListener('blur',()=>{ persist(active); });
   noteRow.appendChild(na); card.appendChild(noteRow); autoGrow(na);
@@ -1350,8 +1365,7 @@ function buildVariantChips(active, ex, ei){
 }
 function selectVariant(active, ei, v){
   const ex=active.exercises[ei]; if(ex.variant===v){ return; }
-  ex.variant=v; ex.prev=exVariantPrev(active.dayId, ex.name, v, active.startTs); ex.best=allTimeBestVariant(active.dayId, ex.name, v);
-  if(!ex._touched){ const p=ex.prev; const dex=dataEx(active.dayId, ex.name); ex.sets=prefillSets(p, (dex&&dex.sets)||((p&&p.sets.length)?null:ex.sets.length)); }
+  ex.variant=v; refreshRefs(active, ex);
   persist(active); rebuildActive(active);
 }
 function addVariant(exName, name){ const s=vStore(); const k=exKey(exName); s.added=s.added||{}; const list=(s.added[k]||[]).slice(); if(list.indexOf(name)<0) list.push(name); s.added[k]=list; vSave(s); }
@@ -1405,7 +1419,7 @@ function buildStepper(active,ex,ei,si,field,step,unit){
   plus.addEventListener('click',()=>{ const c=pnum(inp.value)||0; commit(+(c+step).toFixed(2)); });
   inp.addEventListener('input',()=>{ ex._touched=true; st[field]=inp.value; scheduleLive(active); });
   inp.addEventListener('blur',()=>{ persist(active); updateLive(active); });
-  wrap.append(minus,inp,uu,plus); return wrap;
+  const sv=el('div','sv'); sv.append(inp,uu); wrap.append(minus,sv,plus); return wrap;
 }
 
 function buildRpe(active,ex,si){
